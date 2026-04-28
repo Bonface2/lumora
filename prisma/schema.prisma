@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING // Payment initiated, not yet confirmed
+  PARTIAL_PAID // Initial installment paid, follow-ons pending
+  PAID_IN_FULL // All payments complete
+  DEFAULTED // Past grace period, pending revocation
+  REVOKED // Ticket revoked due to non-payment
+  CANCELLED
+}
+
+enum TicketStatus {
+  ACTIVE
+  REVOKED
+  TRANSFERRED // Ownership moved to a resale buyer
+}
+
+enum InstallmentPaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  DEFAULTED
+}
+
+enum ResaleListingStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
+  REVOKED // Auto-revoked x days before event
+}
+
+// ─── Auth (NextAuth) ──────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?
+  role          Role      @default(BUYER)
+  emailVerified DateTime?
+  image         String?
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  events          Event[]
+  orders          Order[]
+  resaleListings  ResaleListing[]
+  resalePurchases ResaleListing[] @relation("resale_purchases")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Events ───────────────────────────────────────────────────────────────────
+
+model Event {
+  id          String      @id @default(cuid())
+  sellerId    String
+  title       String
+  slug        String      @unique
+  description String      @db.Text
+  date        DateTime
+  endDate     DateTime?
+  venue       String
+  city        String?
+  coverImage  String?
+  status      EventStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  seller           User             @relation(fields: [sellerId], references: [id])
+  ticketCategories TicketCategory[]
+
+  @@map("events")
+}
+
+model TicketCategory {
+  id                String   @id @default(cuid())
+  eventId           String
+  name              String
+  description       String?
+  price             Decimal  @db.Decimal(10, 2)
+  totalQuantity     Int
+  soldQuantity      Int      @default(0)
+  allowInstallments Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  installmentPlan InstallmentPlan?
+  orders          Order[]
+
+  @@map("ticket_categories")
+}
+
+// ─── Installments ─────────────────────────────────────────────────────────────
+
+model InstallmentPlan {
+  id                    String   @id @default(cuid())
+  ticketCategoryId      String   @unique
+  initialPaymentPercent Decimal  @db.Decimal(5, 2) // e.g. 30.00 = 30%
+  gracePeriodDays       Int      @default(7) // days past due before revocation
+  revokeBeforeEventDays Int      @default(3) // resale listings revoked x days before event
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  ticketCategory TicketCategory            @relation(fields: [ticketCategoryId], references: [id], onDelete: Cascade)
+  scheduleItems  InstallmentScheduleItem[]
+
+  @@map("installment_plans")
+}
+
+model InstallmentScheduleItem {
+  id                String   @id @default(cuid())
+  installmentPlanId String
+  installmentNumber Int // 1, 2, 3 ...
+  percentage        Decimal  @db.Decimal(5, 2)
+  dueDate           DateTime
+  createdAt         DateTime @default(now())
+
+  installmentPlan InstallmentPlan      @relation(fields: [installmentPlanId], references: [id], onDelete: Cascade)
+  payments        InstallmentPayment[]
+
+  @@unique([installmentPlanId, installmentNumber])
+  @@map("installment_schedule_items")
+}
+
+// ─── Orders & Tickets ─────────────────────────────────────────────────────────
+
+model Order {
+  id               String      @id @default(cuid())
+  buyerId          String
+  originalBuyerId  String? // set when ownership transfers via resale; kept for audit
+  ticketCategoryId String
+  quantity         Int         @default(1)
+  totalAmount      Decimal     @db.Decimal(10, 2)
+  paidAmount       Decimal     @default(0) @db.Decimal(10, 2)
+  status           OrderStatus @default(PENDING)
+  usesInstallments Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  buyer          User                  @relation(fields: [buyerId], references: [id])
+  ticketCategory TicketCategory        @relation(fields: [ticketCategoryId], references: [id])
+  tickets        Ticket[]
+  payments       InstallmentPayment[]
+  transactions   PaystackTransaction[]
+
+  @@map("orders")
+}
+
+model Ticket {
+  id               String       @id @default(cuid())
+  orderId          String
+  ticketCategoryId String
+  ticketNumber     String       @unique
+  status           TicketStatus @default(ACTIVE)
+  qrCode           String?
+  currentOwnerId   String? // updated when ownership transfers via resale
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  order         Order          @relation(fields: [orderId], references: [id])
+  resaleListing ResaleListing?
+
+  @@map("tickets")
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model InstallmentPayment {
+  id                        String                   @id @default(cuid())
+  orderId                   String
+  installmentScheduleItemId String? // null for the initial payment
+  paymentNumber             Int // 0 = initial, 1+ = follow-ons
+  amount                    Decimal                  @db.Decimal(10, 2)
+  dueDate                   DateTime
+  paidAt                    DateTime?
+  status                    InstallmentPaymentStatus @default(PENDING)
+  reminderSentAt            DateTime? // when the 3-day reminder was dispatched
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  order        Order                    @relation(fields: [orderId], references: [id])
+  scheduleItem InstallmentScheduleItem? @relation(fields: [installmentScheduleItemId], references: [id])
+  transactions PaystackTransaction[]
+
+  @@map("installment_payments")
+}
+
+model PaystackTransaction {
+  id                   String   @id @default(cuid())
+  orderId              String
+  installmentPaymentId String?
+  amount               Decimal  @db.Decimal(10, 2)
+  reference            String   @unique
+  paystackRef          String?
+  status               String   @default("pending") // pending | success | failed
+  metadata             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  order              Order               @relation(fields: [orderId], references: [id])
+  installmentPayment InstallmentPayment? @relation(fields: [installmentPaymentId], references: [id])
+
+  @@map("paystack_transactions")
+}
+
+// ─── Resale Market ────────────────────────────────────────────────────────────
+
+model ResaleListing {
+  id                    String              @id @default(cuid())
+  ticketId              String              @unique // one active listing per ticket
+  sellerId              String
+  buyerId               String?
+  price                 Decimal             @db.Decimal(10, 2)
+  status                ResaleListingStatus @default(ACTIVE)
+  transfersInstallments Boolean             @default(false) // true when ticket is only partially paid
+  expiresAt             DateTime?
+  soldAt                DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+  seller User   @relation(fields: [sellerId], references: [id])
+  buyer  User?  @relation("resale_purchases", fields: [buyerId], references: [id])
+
+  @@map("resale_listings")
+}

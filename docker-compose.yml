@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lumora_postgres
+    environment:
+      POSTGRES_USER: lumora
+      POSTGRES_PASSWORD: lumora_dev
+      POSTGRES_DB: lumora
+    ports:
+      - "5432:5432"
+    volumes:
+      - lumora_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: lumora_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - lumora_redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  lumora_postgres_data:
+  lumora_redis_data:
