@@ -4,10 +4,11 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(8),
 });
 
@@ -46,11 +47,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  events: {
+    async createUser({ user }) {
+      const cookieStore = await cookies();
+      const pendingRole = cookieStore.get("pending_google_role")?.value;
+      if (pendingRole === "SELLER" || pendingRole === "BUYER") {
+        await db.user.update({
+          where: { id: user.id as string },
+          data: { role: pendingRole },
+        });
+      }
+    },
+  },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
+      }
+      // Re-fetch role for OAuth sign-ins so the createUser event's DB update is reflected
+      if (account && user?.id) {
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id as string },
+          select: { role: true },
+        });
+        if (dbUser) token.role = dbUser.role;
       }
       return token;
     },

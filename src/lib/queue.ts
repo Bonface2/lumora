@@ -6,6 +6,10 @@ const connection = new IORedis(
   { maxRetriesPerRequest: null }
 );
 
+// ─── System-wide constants ────────────────────────────────────────────────────
+
+export const RESALE_REVOKE_DAYS_BEFORE_EVENT = 3;
+
 // ─── Queue Names ──────────────────────────────────────────────────────────────
 
 export const QUEUES = {
@@ -133,15 +137,14 @@ export async function cancelInstallmentJobs(
 export function computeResaleExpiry(
   isFullyPaid: boolean,
   eventDate: Date,
-  eventEndDate: Date | null,
-  revokeBeforeEventDays: number
+  eventEndDate: Date | null
 ): Date {
   if (isFullyPaid) {
     return eventEndDate ?? eventDate;
   }
 
   const expiry = new Date(eventDate);
-  expiry.setDate(expiry.getDate() - revokeBeforeEventDays);
+  expiry.setDate(expiry.getDate() - RESALE_REVOKE_DAYS_BEFORE_EVENT);
   return expiry;
 }
 

@@ -165,7 +165,6 @@ model InstallmentPlan {
   ticketCategoryId      String   @unique
   initialPaymentPercent Decimal  @db.Decimal(5, 2) // e.g. 30.00 = 30%
   gracePeriodDays       Int      @default(7) // days past due before revocation
-  revokeBeforeEventDays Int      @default(3) // resale listings revoked x days before event
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
