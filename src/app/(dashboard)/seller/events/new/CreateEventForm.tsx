@@ -10,32 +10,36 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
 import { ImageUpload } from "@/components/ui/ImageUpload";
-import { createEvent } from "@/app/actions/events";
-import { createEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
+import { createEvent, updateEvent } from "@/app/actions/events";
+import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { TicketCategoryFields } from "./TicketCategoryFields";
 
-export function CreateEventForm() {
+interface Props {
+  eventId?: string;
+  defaultValues?: CreateEventFormData;
+}
+
+const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
+  name: "",
+  price: 0,
+  totalQuantity: 0,
+  allowInstallments: false,
+  sortOrder: 0,
+  installmentPlan: {
+    initialPaymentPercent: 30,
+    gracePeriodDays: 7,
+    scheduleItems: [],
+  },
+};
+
+export function CreateEventForm({ eventId, defaultValues }: Props) {
+  const isEdit = Boolean(eventId);
   const router = useRouter();
   const [serverError, setServerError] = useState("");
 
   const methods = useForm<CreateEventFormData, unknown, CreateEventFormData>({
-    resolver: zodResolver(createEventSchema),
-    defaultValues: {
-      ticketCategories: [
-        {
-          name: "",
-          price: 0,
-          totalQuantity: 0,
-          allowInstallments: false,
-          sortOrder: 0,
-          installmentPlan: {
-            initialPaymentPercent: 30,
-            gracePeriodDays: 7,
-            scheduleItems: [],
-          },
-        },
-      ],
-    },
+    resolver: zodResolver(isEdit ? editEventSchema : createEventSchema),
+    defaultValues: defaultValues ?? { ticketCategories: [{ ...BLANK_CATEGORY }] },
   });
 
   const {
@@ -54,13 +58,17 @@ export function CreateEventForm() {
 
   async function onSubmit(data: CreateEventFormData) {
     setServerError("");
-    const res = await createEvent(data);
+    const res = isEdit
+      ? await updateEvent(eventId!, data)
+      : await createEvent(data);
     if (!res.ok) {
       setServerError(res.error);
       return;
     }
     router.push(`/seller/events/${res.data.id}`);
   }
+
+  const cancelHref = isEdit ? `/seller/events/${eventId}` : "/seller";
 
   return (
     <FormProvider {...methods}>
@@ -164,16 +172,8 @@ export function CreateEventForm() {
               size="sm"
               onClick={() =>
                 append({
-                  name: "",
-                  price: 0,
-                  totalQuantity: 0,
-                  allowInstallments: false,
+                  ...BLANK_CATEGORY,
                   sortOrder: fields.length,
-                  installmentPlan: {
-                    initialPaymentPercent: 30,
-                    gracePeriodDays: 7,
-                    scheduleItems: [],
-                  },
                 })
               }
             >
@@ -199,13 +199,13 @@ export function CreateEventForm() {
         </div>
 
         <div className="flex justify-end gap-3 pb-8">
-          <a href="/seller">
+          <a href={cancelHref}>
             <Button type="button" variant="secondary">
               Cancel
             </Button>
           </a>
           <Button type="submit" loading={isSubmitting}>
-            Create event
+            {isEdit ? "Save changes" : "Create event"}
           </Button>
         </div>
       </form>

@@ -221,6 +221,7 @@ model Ticket {
   status           TicketStatus @default(ACTIVE)
   qrCode           String?
   currentOwnerId   String? // updated when ownership transfers via resale
+  checkedInAt      DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 

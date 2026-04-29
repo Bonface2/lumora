@@ -15,6 +15,7 @@ export const installmentPlanSchema = z.object({
 });
 
 export const ticketCategorySchema = z.object({
+  id: z.string().optional(), // present when editing an existing category
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   price: z.number().min(1, "Price must be greater than 0"),
@@ -24,86 +25,84 @@ export const ticketCategorySchema = z.object({
   installmentPlan: installmentPlanSchema.optional(),
 });
 
-export const createEventSchema = z
-  .object({
-    title: z.string().min(3, "Title must be at least 3 characters"),
-    description: z.string().min(20, "Description must be at least 20 characters"),
-    date: z.string().min(1, "Event date is required"),
-    endDate: z.string().optional(),
-    venue: z.string().min(2, "Venue is required"),
-    city: z.string().optional(),
-    coverImage: z.string().optional(),
-    ticketCategories: z
-      .array(ticketCategorySchema)
-      .min(1, "Add at least one ticket category"),
-  })
-  .superRefine((data, ctx) => {
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+const eventBaseSchema = z.object({
+  title: z.string().min(3, "Title must be at least 3 characters"),
+  description: z.string().min(20, "Description must be at least 20 characters"),
+  date: z.string().min(1, "Event date is required"),
+  endDate: z.string().optional(),
+  venue: z.string().min(2, "Venue is required"),
+  city: z.string().optional(),
+  coverImage: z.string().optional(),
+  ticketCategories: z
+    .array(ticketCategorySchema)
+    .min(1, "Add at least one ticket category"),
+});
 
-    // Start date must be in the future
-    if (data.date) {
-      const eventStart = new Date(data.date);
-      if (eventStart <= now) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Event start date must be in the future",
-          path: ["date"],
-        });
-      }
-
-      // End date must be after start date
-      if (data.endDate) {
-        const eventEnd = new Date(data.endDate);
-        if (eventEnd <= eventStart) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "End date must be after the start date",
-            path: ["endDate"],
-          });
-        }
-      }
-
-      // Installment due date validations
-      const eventDateStr = data.date.slice(0, 10);
-      data.ticketCategories.forEach((cat, catIdx) => {
-        if (!cat.allowInstallments || !cat.installmentPlan) return;
-        let prevDueDate = "";
-        cat.installmentPlan.scheduleItems.forEach((item, itemIdx) => {
-          if (!item.dueDate) return;
-          const path = [
-            "ticketCategories",
-            catIdx,
-            "installmentPlan",
-            "scheduleItems",
-            itemIdx,
-            "dueDate",
-          ];
-
-          if (item.dueDate < todayStr) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Due date cannot be in the past",
-              path,
-            });
-          } else if (item.dueDate >= eventDateStr) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Due date must be before the event date",
-              path,
-            });
-          } else if (prevDueDate && item.dueDate <= prevDueDate) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Due date must be after the previous installment",
-              path,
-            });
-          }
-          prevDueDate = item.dueDate;
-        });
+function installmentDateRefinement(
+  data: z.infer<typeof eventBaseSchema>,
+  ctx: z.RefinementCtx,
+  todayStr: string
+) {
+  if (!data.date) return;
+  const eventStart = new Date(data.date);
+  if (data.endDate) {
+    const eventEnd = new Date(data.endDate);
+    if (eventEnd <= eventStart) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "End date must be after the start date",
+        path: ["endDate"],
       });
     }
+  }
+  const eventDateStr = data.date.slice(0, 10);
+  data.ticketCategories.forEach((cat, catIdx) => {
+    if (!cat.allowInstallments || !cat.installmentPlan) return;
+    let prevDueDate = "";
+    cat.installmentPlan.scheduleItems.forEach((item, itemIdx) => {
+      if (!item.dueDate) return;
+      const path = [
+        "ticketCategories",
+        catIdx,
+        "installmentPlan",
+        "scheduleItems",
+        itemIdx,
+        "dueDate",
+      ];
+      if (item.dueDate < todayStr) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date cannot be in the past", path });
+      } else if (item.dueDate >= eventDateStr) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date must be before the event date", path });
+      } else if (prevDueDate && item.dueDate <= prevDueDate) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date must be after the previous installment", path });
+      }
+      prevDueDate = item.dueDate;
+    });
   });
+}
+
+export const createEventSchema = eventBaseSchema.superRefine((data, ctx) => {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  if (data.date) {
+    const eventStart = new Date(data.date);
+    if (eventStart <= now) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Event start date must be in the future",
+        path: ["date"],
+      });
+    }
+  }
+  installmentDateRefinement(data, ctx, todayStr);
+});
+
+// Edit variant: same checks but no "must be future" constraint on start date
+// so sellers can edit events that are happening today or are ongoing.
+export const editEventSchema = eventBaseSchema.superRefine((data, ctx) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  installmentDateRefinement(data, ctx, todayStr);
+});
 
 // With no .default() calls, input and output types are identical — no mismatch.
 export type CreateEventFormData = z.infer<typeof createEventSchema>;

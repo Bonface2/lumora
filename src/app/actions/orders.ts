@@ -145,3 +145,57 @@ export async function createOrder(input: {
 
   return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
 }
+
+export async function payInstallment(
+  orderId: string
+): Promise<ApiResponse<{ paymentUrl: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Please sign in to continue." };
+
+  const order = await db.order.findFirst({
+    where: { id: orderId, buyerId: session.user.id },
+    include: {
+      payments: { orderBy: { paymentNumber: "asc" } },
+      buyer: { select: { email: true } },
+    },
+  });
+
+  if (!order) return { ok: false, error: "Order not found." };
+  if (order.status !== "PARTIAL_PAID") return { ok: false, error: "No installment payment is due for this order." };
+
+  const nextPayment = order.payments.find(
+    (p) => p.paymentNumber > 0 && p.status === "PENDING"
+  );
+  if (!nextPayment) return { ok: false, error: "No pending installment found." };
+
+  const reference = generateReference("LUM");
+
+  await db.paystackTransaction.create({
+    data: {
+      orderId: order.id,
+      installmentPaymentId: nextPayment.id,
+      amount: nextPayment.amount,
+      reference,
+      status: "pending",
+      metadata: {
+        orderId: order.id,
+        paymentNumber: nextPayment.paymentNumber,
+      },
+    },
+  });
+
+  const paystack = await initializePayment({
+    email: order.buyer.email,
+    amount: toKobo(Number(nextPayment.amount)),
+    reference,
+    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
+    metadata: { orderId: order.id, paymentNumber: nextPayment.paymentNumber },
+  });
+
+  if (!paystack.status) {
+    await db.paystackTransaction.delete({ where: { reference } });
+    return { ok: false, error: "Failed to initialise payment. Please try again." };
+  }
+
+  return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+}

@@ -12,6 +12,7 @@ export async function GET() {
     to: session.user.email!,
     name: session.user.name ?? "there",
     eventTitle: "Test Event — Email Debug",
+    categoryName: "General Admission",
     ticketNumbers: ["TEST-ABC12345", "TEST-XYZ67890"],
     eventDate: "Saturday, 01 January 2026 · 18:00",
     venue: "Lumora Test Venue, Nairobi",

@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
+import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -119,6 +119,169 @@ export async function publishEvent(
   });
 
   return { ok: true, data: { status: "PUBLISHED" } };
+}
+
+export async function updateEvent(
+  eventId: string,
+  input: CreateEventFormData
+): Promise<ApiResponse<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const parsed = editEventSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid form data." };
+  }
+  const data = parsed.data;
+
+  const existingEvent = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+    include: {
+      ticketCategories: {
+        include: { installmentPlan: { include: { scheduleItems: true } } },
+      },
+    },
+  });
+  if (!existingEvent) return { ok: false, error: "Event not found." };
+
+  // Validate installment percentages
+  for (const cat of data.ticketCategories) {
+    if (cat.allowInstallments && cat.installmentPlan) {
+      const { initialPaymentPercent, scheduleItems } = cat.installmentPlan;
+      const scheduleTotal = scheduleItems.reduce((s: number, i: { percentage: number }) => s + i.percentage, 0);
+      const total = initialPaymentPercent + scheduleTotal;
+      if (Math.abs(total - 100) > 0.01) {
+        return {
+          ok: false,
+          error: `Installment percentages for "${cat.name}" must add up to 100% (currently ${total}%).`,
+        };
+      }
+    }
+  }
+
+  // Update basic event fields
+  await db.event.update({
+    where: { id: eventId },
+    data: {
+      title: data.title,
+      description: data.description,
+      date: new Date(data.date),
+      endDate: data.endDate ? new Date(data.endDate) : null,
+      venue: data.venue,
+      city: data.city ?? null,
+      coverImage: data.coverImage ?? null,
+    },
+  });
+
+  const incomingIds = new Set(
+    data.ticketCategories.filter((c) => c.id).map((c) => c.id as string)
+  );
+
+  // Delete removed categories that have no tickets sold
+  for (const existing of existingEvent.ticketCategories) {
+    if (!incomingIds.has(existing.id) && existing.soldQuantity === 0) {
+      await db.ticketCategory.delete({ where: { id: existing.id } });
+    }
+  }
+
+  const existingById = new Map(existingEvent.ticketCategories.map((c) => [c.id, c]));
+
+  for (let i = 0; i < data.ticketCategories.length; i++) {
+    const cat = data.ticketCategories[i];
+
+    if (cat.id && existingById.has(cat.id)) {
+      const existing = existingById.get(cat.id)!;
+
+      // Prevent lowering quantity below what's already sold
+      const safeQty = Math.max(cat.totalQuantity, existing.soldQuantity);
+
+      await db.ticketCategory.update({
+        where: { id: cat.id },
+        data: {
+          name: cat.name,
+          description: cat.description ?? null,
+          price: cat.price,
+          totalQuantity: safeQty,
+          allowInstallments: cat.allowInstallments,
+          sortOrder: i,
+        },
+      });
+
+      if (cat.allowInstallments && cat.installmentPlan) {
+        if (existing.installmentPlan) {
+          // Delete all schedule items and recreate
+          await db.installmentScheduleItem.deleteMany({
+            where: { installmentPlanId: existing.installmentPlan.id },
+          });
+          await db.installmentPlan.update({
+            where: { id: existing.installmentPlan.id },
+            data: {
+              initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
+              gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+              scheduleItems: {
+                create: cat.installmentPlan.scheduleItems.map((item) => ({
+                  installmentNumber: item.installmentNumber,
+                  percentage: item.percentage,
+                  dueDate: new Date(item.dueDate),
+                })),
+              },
+            },
+          });
+        } else {
+          await db.installmentPlan.create({
+            data: {
+              ticketCategoryId: cat.id,
+              initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
+              gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+              scheduleItems: {
+                create: cat.installmentPlan.scheduleItems.map((item) => ({
+                  installmentNumber: item.installmentNumber,
+                  percentage: item.percentage,
+                  dueDate: new Date(item.dueDate),
+                })),
+              },
+            },
+          });
+        }
+      } else if (!cat.allowInstallments && existing.installmentPlan) {
+        await db.installmentPlan.delete({ where: { id: existing.installmentPlan.id } });
+      }
+    } else {
+      // New category
+      await db.ticketCategory.create({
+        data: {
+          eventId,
+          name: cat.name,
+          description: cat.description ?? null,
+          price: cat.price,
+          totalQuantity: cat.totalQuantity,
+          allowInstallments: cat.allowInstallments,
+          sortOrder: i,
+          ...(cat.allowInstallments && cat.installmentPlan
+            ? {
+                installmentPlan: {
+                  create: {
+                    initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
+                    gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+                    scheduleItems: {
+                      create: cat.installmentPlan.scheduleItems.map((item) => ({
+                        installmentNumber: item.installmentNumber,
+                        percentage: item.percentage,
+                        dueDate: new Date(item.dueDate),
+                      })),
+                    },
+                  },
+                },
+              }
+            : {}),
+        },
+      });
+    }
+  }
+
+  return { ok: true, data: { id: eventId } };
 }
 
 export async function unpublishEvent(

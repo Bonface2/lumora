@@ -16,6 +16,11 @@ const schema = z
   .object({
     name: z.string().min(2, "Name must be at least 2 characters"),
     email: z.email("Enter a valid email"),
+    phone: z
+      .string()
+      .regex(/^\+?[\d\s\-]{7,15}$/, "Enter a valid phone number")
+      .optional()
+      .or(z.literal("")),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
     role: z.enum(["BUYER", "SELLER"]),
@@ -48,7 +53,7 @@ export default function RegisterPage() {
 
   async function onSubmit(data: FormData) {
     setServerError("");
-    const res = await registerUser(data);
+    const res = await registerUser({ ...data, phone: data.phone || undefined });
     if (!res.ok) {
       setServerError(res.error);
       return;
@@ -133,6 +138,18 @@ export default function RegisterPage() {
               autoComplete="email"
               error={errors.email?.message}
               {...register("email")}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="phone">Phone number <span className="text-gray-400 font-normal">(optional)</span></Label>
+            <Input
+              id="phone"
+              type="tel"
+              placeholder="+254 700 000 000"
+              autoComplete="tel"
+              error={errors.phone?.message}
+              {...register("phone")}
             />
           </div>
 

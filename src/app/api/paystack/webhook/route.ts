@@ -5,6 +5,7 @@ import { sendTicketConfirmation, sendInstallmentReceipt } from "@/lib/email";
 import {
   scheduleInstallmentReminder,
   scheduleTicketRevocation,
+  cancelInstallmentJobs,
 } from "@/lib/queue";
 import { format } from "date-fns";
 
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
   const event_ = ticketCategory.event;
   const plan = ticketCategory.installmentPlan;
 
+  const isFollowOnPayment = !!transaction.installmentPaymentId;
+
   await db.$transaction(async (tx) => {
     // Mark Paystack transaction as successful
     await tx.paystackTransaction.update({
@@ -75,13 +78,20 @@ export async function POST(req: Request) {
       data: { status: "success", paystackRef: event.data.id?.toString() },
     });
 
-    // Mark the initial installment payment as paid
-    const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
-    if (initialPayment && initialPayment.status !== "PAID") {
+    // Mark the correct installment payment as PAID
+    if (isFollowOnPayment) {
       await tx.installmentPayment.update({
-        where: { id: initialPayment.id },
+        where: { id: transaction.installmentPaymentId! },
         data: { status: "PAID", paidAt: new Date() },
       });
+    } else {
+      const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
+      if (initialPayment && initialPayment.status !== "PAID") {
+        await tx.installmentPayment.update({
+          where: { id: initialPayment.id },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+      }
     }
 
     const newPaidAmount = Number(order.paidAmount) + amountNaira;
@@ -96,14 +106,16 @@ export async function POST(req: Request) {
       },
     });
 
-    // Increment soldQuantity on the category
-    await tx.ticketCategory.update({
-      where: { id: ticketCategory.id },
-      data: { soldQuantity: { increment: order.quantity } },
-    });
+    // Increment soldQuantity only on first payment
+    if (!isFollowOnPayment) {
+      await tx.ticketCategory.update({
+        where: { id: ticketCategory.id },
+        data: { soldQuantity: { increment: order.quantity } },
+      });
+    }
 
-    // Generate one ticket per quantity if not already created
-    if (order.tickets.length === 0) {
+    // Generate tickets only on first payment
+    if (!isFollowOnPayment && order.tickets.length === 0) {
       const prefix = event_.title
         .split(" ")
         .map((w) => w[0])
@@ -124,6 +136,11 @@ export async function POST(req: Request) {
       }
     }
   });
+
+  // Cancel the reminder + revocation jobs for the payment that was just made
+  if (isFollowOnPayment) {
+    await cancelInstallmentJobs([transaction.installmentPaymentId!]);
+  }
 
   // Reload order with fresh ticket
   const updatedOrder = await db.order.findUniqueOrThrow({
@@ -175,8 +192,9 @@ export async function POST(req: Request) {
     console.error("[webhook] email threw:", err);
   }
 
-  // Schedule reminder + revocation jobs for remaining installments
-  if (!isFullyPaid && plan) {
+  // Schedule reminder + revocation jobs on initial payment only.
+  // Follow-on payments: jobs were already scheduled at purchase; the paid one was cancelled above.
+  if (!isFollowOnPayment && !isFullyPaid && plan) {
     const pendingPayments = updatedOrder.payments.filter(
       (p) => p.paymentNumber > 0 && p.status === "PENDING"
     );
