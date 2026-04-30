@@ -109,7 +109,7 @@ export default function RegisterPage() {
                 onClick={() => setValue("role", r)}
                 className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
                   role === r
-                    ? "bg-violet-600 text-white"
+                    ? "bg-primary-600 text-white"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
@@ -184,7 +184,7 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <a href="/login" className="font-medium text-violet-600 hover:underline">
+          <a href="/login" className="font-medium text-primary-600 hover:underline">
             Sign in
           </a>
         </p>

@@ -1,8 +1,8 @@
 import { type ButtonHTMLAttributes, forwardRef } from "react";
 
 const variants = {
-  primary: "bg-violet-600 text-white hover:bg-violet-700 disabled:bg-violet-300",
-  secondary: "bg-white text-violet-600 border border-violet-600 hover:bg-violet-50 disabled:opacity-50",
+  primary: "bg-primary-600 text-white hover:bg-primary-700 disabled:bg-primary-300",
+  secondary: "bg-white text-primary-600 border border-primary-600 hover:bg-primary-50 disabled:opacity-50",
   ghost: "bg-transparent text-gray-700 hover:bg-gray-100 disabled:opacity-50",
   danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300",
 };
@@ -27,7 +27,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 cursor-pointer disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg font-semibold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 cursor-pointer disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {loading && (

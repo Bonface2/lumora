@@ -81,8 +81,8 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
             }}
             className={`w-full rounded-xl border-2 p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               isSelected
-                ? "border-violet-500 bg-violet-50"
-                : "border-gray-200 bg-white hover:border-violet-300"
+                ? "border-primary-500 bg-primary-50"
+                : "border-gray-200 bg-white hover:border-primary-300"
             }`}
           >
             <div className="flex items-start justify-between">
@@ -105,9 +105,9 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
 
             {/* Installment section — always visible when selected */}
             {isSelected && cat.allowInstallments && cat.installmentPlan && (
-              <div className="mt-3 border-t border-violet-200 pt-3 space-y-3">
+              <div className="mt-3 border-t border-primary-200 pt-3 space-y-3">
                 {/* Schedule breakdown — always shown */}
-                <div className="rounded-lg bg-white border border-violet-200 p-3 space-y-1.5 text-xs">
+                <div className="rounded-lg bg-white border border-primary-200 p-3 space-y-1.5 text-xs">
                   <div className="flex justify-between font-medium text-gray-700">
                     <span>Deposit ({cat.installmentPlan.initialPaymentPercent}%) — pay now</span>
                     <span>KES {Math.round(initialAmount).toLocaleString()}</span>
@@ -140,7 +140,7 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
                       checked={useInstallments}
                       onChange={(e) => setUseInstallments(e.target.checked)}
                     />
-                    <span className="h-5 w-9 rounded-full bg-gray-300 transition-colors peer-checked:bg-violet-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+                    <span className="h-5 w-9 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
                   </div>
                   <span className="text-sm font-medium text-gray-700">
                     Pay in installments

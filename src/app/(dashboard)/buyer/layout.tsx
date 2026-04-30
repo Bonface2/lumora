@@ -7,7 +7,7 @@ export default async function BuyerLayout({ children }: { children: React.ReactN
   if (!session?.user) redirect("/login");
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-800">
       <BuyerSidebar />
       <main className="flex-1 overflow-y-auto">
         {children}

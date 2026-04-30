@@ -65,7 +65,7 @@ export function ImageUpload({ value, onChange }: Props) {
         className="flex h-36 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition-colors hover:bg-gray-100 disabled:opacity-60"
       >
         {uploading ? (
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
         ) : (
           <>
             <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

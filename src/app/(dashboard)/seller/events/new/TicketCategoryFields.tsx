@@ -120,7 +120,7 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
               className="sr-only peer"
               {...register(`ticketCategories.${index}.allowInstallments`)}
             />
-            <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-violet-600 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+            <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
           </label>
           <div>
             <p className="text-sm font-medium text-gray-900">Allow installments</p>
@@ -130,8 +130,8 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
 
         {/* Installment plan config — shown only when toggle is on */}
         {allowInstallments && (
-          <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 space-y-4">
-            <p className="text-sm font-medium text-violet-800">Installment plan</p>
+          <div className="rounded-lg border border-primary-200 bg-primary-50 p-4 space-y-4">
+            <p className="text-sm font-medium text-primary-800">Installment plan</p>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -175,7 +175,7 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
                         ? "bg-red-500"
                         : totalPct === 100
                           ? "bg-green-500"
-                          : "bg-violet-500"
+                          : "bg-primary-500"
                     }`}
                     style={{ width: `${Math.min(totalPct, 100)}%` }}
                   />

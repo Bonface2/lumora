@@ -1,27 +1,32 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format } from "date-fns";
-import { Badge } from "@/components/ui/Badge";
 import Link from "next/link";
 import type { OrderStatus } from "@prisma/client";
 
-const statusVariant: Record<OrderStatus, "default" | "primary" | "success" | "warning" | "danger"> = {
-  PENDING: "default",
-  PARTIAL_PAID: "warning",
-  PAID_IN_FULL: "success",
-  DEFAULTED: "danger",
-  REVOKED: "danger",
-  CANCELLED: "default",
+const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
+  PENDING: { label: "Pending", cls: "bg-gray-100 text-gray-600" },
+  PARTIAL_PAID: { label: "Installments", cls: "bg-amber-100 text-amber-700" },
+  PAID_IN_FULL: { label: "Paid in full", cls: "bg-emerald-100 text-emerald-700" },
+  DEFAULTED: { label: "Defaulted", cls: "bg-red-100 text-red-600" },
+  REVOKED: { label: "Revoked", cls: "bg-red-100 text-red-600" },
+  CANCELLED: { label: "Cancelled", cls: "bg-gray-100 text-gray-500" },
 };
 
-const statusLabel: Record<OrderStatus, string> = {
-  PENDING: "Pending",
-  PARTIAL_PAID: "Installments",
-  PAID_IN_FULL: "Paid in full",
-  DEFAULTED: "Defaulted",
-  REVOKED: "Revoked",
-  CANCELLED: "Cancelled",
-};
+/* Deterministic gradient for events without a cover image */
+const gradients = [
+  "from-primary-600 to-cyan-400",
+  "from-violet-600 to-primary-400",
+  "from-rose-500 to-orange-400",
+  "from-indigo-600 to-primary-400",
+  "from-emerald-500 to-cyan-400",
+  "from-fuchsia-600 to-rose-400",
+];
+
+function eventGradient(id: string) {
+  const idx = id.charCodeAt(0) % gradients.length;
+  return gradients[idx];
+}
 
 export default async function BuyerTicketsPage() {
   const session = await auth();
@@ -45,120 +50,188 @@ export default async function BuyerTicketsPage() {
   });
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Tickets</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            {user?.name ?? user?.email} · {orders.length} ticket{orders.length !== 1 ? "s" : ""}
-          </p>
+    <div className="min-h-full bg-gray-50 font-sans">
+      {/* ── Header ── */}
+      <div className="relative overflow-hidden bg-gray-800 px-8 py-10">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: "radial-gradient(circle, #16b5b8 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="pointer-events-none absolute -top-24 left-1/3 h-64 w-96 rounded-full bg-primary-500/20 blur-[80px]" />
+
+        <div className="relative flex items-end justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-400 mb-1">
+              Buyer dashboard
+            </p>
+            <h1 className="text-3xl font-black tracking-tight text-white">My Tickets</h1>
+            <div className="mt-3 flex items-center gap-6">
+              <div>
+                <p className="text-2xl font-black text-white">{orders.length}</p>
+                <p className="text-xs text-gray-500">ticket{orders.length !== 1 ? "s" : ""}</p>
+              </div>
+              {user?.name && (
+                <>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{user.name}</p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <Link
+            href="/events"
+            className="flex items-center gap-1.5 rounded-xl bg-primary-600 px-4 py-2 text-sm font-bold text-white hover:bg-primary-500 transition-colors"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Browse events
+          </Link>
         </div>
-        <Link
-          href="/events"
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Browse events
-        </Link>
       </div>
 
+      <div className="p-8">
+
       {orders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-20 text-center">
-          <svg className="h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-          </svg>
-          <p className="mt-4 text-lg font-medium text-gray-900">No tickets yet</p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100">
+            <svg className="h-8 w-8 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+          </div>
+          <p className="mt-4 text-lg font-bold text-gray-900">No tickets yet</p>
           <p className="mt-1 text-sm text-gray-500">Browse events and grab your first ticket.</p>
           <Link
             href="/events"
-            className="mt-4 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-violet-700"
+            className="mt-5 rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-700 transition-colors"
           >
             Browse events
           </Link>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => {
             const event = order.ticketCategory.event;
+            const cfg = statusConfig[order.status];
+            const paidAmount = Number(order.paidAmount);
+            const totalAmount = Number(order.totalAmount);
+            const progress = totalAmount > 0 ? Math.min(100, (paidAmount / totalAmount) * 100) : 0;
             const pendingPayments = order.payments.filter(
               (p) => p.paymentNumber > 0 && p.status === "PENDING"
             );
             const nextPayment = pendingPayments[0];
-            const paidAmount = Number(order.paidAmount);
-            const totalAmount = Number(order.totalAmount);
 
             return (
               <div
                 key={order.id}
-                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="font-semibold text-gray-900 truncate">{event.title}</h2>
-                      <Badge variant={statusVariant[order.status]}>
-                        {statusLabel[order.status]}
-                      </Badge>
-                    </div>
-                    <p className="mt-0.5 text-sm text-gray-500">
-                      {format(event.date, "dd MMM yyyy · HH:mm")} · {event.venue}
-                      {event.city ? `, ${event.city}` : ""}
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-400">{order.ticketCategory.name}</p>
+                {/* Cover / gradient header */}
+                <div className="relative h-36 w-full overflow-hidden">
+                  {event.coverImage ? (
+                    <img
+                      src={event.coverImage}
+                      alt={event.title}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className={`h-full w-full bg-gradient-to-br ${eventGradient(event.id)}`} />
+                  )}
+
+                  {/* Dark gradient overlay for readability */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                  {/* Date badge */}
+                  <div className="absolute right-3 top-3 flex flex-col items-center rounded-xl bg-white/95 px-2.5 py-1.5 shadow-md backdrop-blur-sm">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-primary-600 leading-none">
+                      {format(event.date, "MMM")}
+                    </span>
+                    <span className="mt-0.5 text-base font-black leading-none text-gray-900">
+                      {format(event.date, "dd")}
+                    </span>
                   </div>
 
+                  {/* Status badge — bottom left on image */}
+                  <div className="absolute bottom-3 left-3">
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${cfg.cls}`}>
+                      {cfg.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex flex-1 flex-col p-4">
+                  <h2 className="font-bold text-gray-900 leading-snug line-clamp-1">{event.title}</h2>
+                  <p className="mt-0.5 text-xs text-gray-500 truncate">
+                    {format(event.date, "HH:mm")} · {event.venue}{event.city ? `, ${event.city}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-400">{order.ticketCategory.name}</p>
+
+                  {/* Ticket numbers */}
                   {order.tickets.length > 0 && (
-                    <div className="flex shrink-0 flex-col gap-1.5">
+                    <div className="mt-3 flex flex-wrap gap-1.5">
                       {order.tickets.map((t) => (
-                        <div key={t.id} className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-center">
-                          <p className="text-xs text-gray-500">Ticket</p>
-                          <p className="mt-0.5 font-mono text-sm font-bold text-violet-700">
-                            {t.ticketNumber}
-                          </p>
-                        </div>
+                        <span
+                          key={t.id}
+                          className="rounded-lg bg-primary-50 px-2.5 py-1 font-mono text-xs font-bold text-primary-700 border border-primary-100"
+                        >
+                          {t.ticketNumber}
+                        </span>
                       ))}
                     </div>
                   )}
-                </div>
 
-                {order.usesInstallments && (
-                  <div className="mt-4 rounded-lg bg-gray-50 p-3">
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                      <span>Payment progress</span>
-                      <span>KES {paidAmount.toLocaleString()} / {totalAmount.toLocaleString()}</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-gray-200">
-                      <div
-                        className="h-1.5 rounded-full bg-violet-500"
-                        style={{ width: `${Math.min(100, (paidAmount / totalAmount) * 100)}%` }}
-                      />
-                    </div>
-
-                    {nextPayment && order.status === "PARTIAL_PAID" && (
-                      <div className="mt-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-xs text-gray-500">Next installment</p>
-                          <p className="text-sm font-medium text-gray-900">
-                            KES {Number(nextPayment.amount).toLocaleString()}
-                            <span className="ml-1 text-xs font-normal text-gray-500">
-                              due {format(nextPayment.dueDate, "dd MMM yyyy")}
-                            </span>
-                          </p>
-                        </div>
-                        <a
-                          href={`/buyer/orders/${order.id}/pay`}
-                          className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
-                        >
-                          Pay now
-                        </a>
+                  {/* Installment progress */}
+                  {order.usesInstallments && (
+                    <div className="mt-4 rounded-xl bg-gray-50 p-3">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                        <span className="font-medium">Payment progress</span>
+                        <span className="font-bold text-gray-700">
+                          KES {paidAmount.toLocaleString()} / {totalAmount.toLocaleString()}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-2 rounded-full bg-primary-500 transition-all"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      {nextPayment && order.status === "PARTIAL_PAID" && (
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Next due</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              KES {Number(nextPayment.amount).toLocaleString()}
+                              <span className="ml-1 text-[10px] font-normal text-gray-500">
+                                {format(nextPayment.dueDate, "dd MMM")}
+                              </span>
+                            </p>
+                          </div>
+                          <a
+                            href={`/buyer/orders/${order.id}/pay`}
+                            className="shrink-0 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700 transition-colors"
+                          >
+                            Pay now
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

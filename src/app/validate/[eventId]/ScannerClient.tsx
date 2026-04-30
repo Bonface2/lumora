@@ -109,7 +109,7 @@ export function ScannerClient({ eventId, eventTitle, initialCheckedIn, totalSold
           <p className="font-semibold text-sm truncate max-w-[200px]">{eventTitle}</p>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-bold text-violet-400">{checkedIn}</p>
+          <p className="text-2xl font-bold text-primary-400">{checkedIn}</p>
           <p className="text-xs text-gray-400">of {totalSold} checked in</p>
         </div>
       </div>
@@ -170,12 +170,12 @@ export function ScannerClient({ eventId, eventTitle, initialCheckedIn, totalSold
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value.toUpperCase())}
             placeholder="Enter ticket number manually"
-            className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm font-mono text-white placeholder-gray-500 border border-gray-700 focus:border-violet-500 focus:outline-none"
+            className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm font-mono text-white placeholder-gray-500 border border-gray-700 focus:border-primary-500 focus:outline-none"
           />
           <button
             type="submit"
             disabled={!manualInput.trim() || validating}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
           >
             Check
           </button>

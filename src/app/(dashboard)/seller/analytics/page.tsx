@@ -1,17 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { format } from "date-fns";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import type { EventStatus } from "@prisma/client";
-
-const statusVariant: Record<EventStatus, "default" | "success" | "danger" | "warning"> = {
-  DRAFT: "default",
-  PUBLISHED: "success",
-  CANCELLED: "danger",
-  COMPLETED: "warning",
-};
+import { AnalyticsCharts } from "./AnalyticsCharts";
 
 export default async function AnalyticsPage() {
   const session = await auth();
@@ -22,7 +11,6 @@ export default async function AnalyticsPage() {
       ticketCategories: {
         include: {
           orders: {
-            where: { status: { notIn: ["PENDING", "CANCELLED", "REVOKED"] } },
             include: { payments: true },
           },
         },
@@ -31,168 +19,185 @@ export default async function AnalyticsPage() {
     orderBy: { date: "asc" },
   });
 
-  // Aggregate totals across all events
   let grandRevenue = 0;
   let grandCollected = 0;
   let grandSold = 0;
+  let grandAvailable = 0;
+  let grandNearingRevocation = 0;
+  let grandRevoked = 0;
+  let grandTotalOrders = 0;
 
-  const eventStats = events.map((event) => {
-    let revenue = 0;
-    let collected = 0;
-    let sold = 0;
-    let pendingInstallments = 0;
+  const eventStats: {
+    name: string;
+    revenue: number;
+    collected: number;
+    outstanding: number;
+    sold: number;
+    available: number;
+  }[] = [];
+
+  const categoryStats: {
+    categoryId: string;
+    name: string;
+    eventName: string;
+    sold: number;
+    available: number;
+    defaulted: number;
+    revoked: number;
+    totalOrders: number;
+  }[] = [];
+
+  for (const event of events) {
+    let evRevenue = 0;
+    let evCollected = 0;
+    let evSold = 0;
+    const evAvailable = event.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
 
     for (const cat of event.ticketCategories) {
-      sold += cat.soldQuantity;
-      revenue += Number(cat.price) * cat.soldQuantity;
+      evSold += cat.soldQuantity;
+      evRevenue += Number(cat.price) * cat.soldQuantity;
+
+      let catCollected = 0;
+      let catDefaulted = 0;
+      let catRevoked = 0;
+      let catTotalOrders = 0;
 
       for (const order of cat.orders) {
-        collected += Number(order.paidAmount);
-        for (const payment of order.payments) {
-          if (payment.paymentNumber > 0 && payment.status === "PENDING") {
-            pendingInstallments += Number(payment.amount);
-          }
-        }
+        if (order.status === "PENDING" || order.status === "CANCELLED") continue;
+        catTotalOrders++;
+        catCollected += Number(order.paidAmount);
+        if (order.status === "DEFAULTED") catDefaulted++;
+        if (order.status === "REVOKED") { catDefaulted++; catRevoked++; }
       }
+
+      evCollected += catCollected;
+      grandNearingRevocation += cat.orders.filter((o) => o.status === "DEFAULTED").length;
+      grandRevoked += catRevoked;
+      grandTotalOrders += catTotalOrders;
+
+      categoryStats.push({
+        categoryId: cat.id,
+        name: cat.name,
+        eventName: event.title,
+        sold: cat.soldQuantity,
+        available: cat.totalQuantity,
+        defaulted: catDefaulted,
+        revoked: catRevoked,
+        totalOrders: catTotalOrders,
+      });
     }
 
-    grandRevenue += revenue;
-    grandCollected += collected;
-    grandSold += sold;
+    grandRevenue += evRevenue;
+    grandCollected += evCollected;
+    grandSold += evSold;
+    grandAvailable += evAvailable;
 
-    return { event, revenue, collected, sold, pendingInstallments };
-  });
+    eventStats.push({
+      name: event.title,
+      revenue: evRevenue,
+      collected: evCollected,
+      outstanding: Math.max(0, evRevenue - evCollected),
+      sold: evSold,
+      available: evAvailable,
+    });
+  }
+
+  const grandDefaulted = categoryStats.reduce((s, c) => s + c.defaulted, 0);
+  const grandDefaultRate =
+    grandTotalOrders > 0 ? Math.round((grandDefaulted / grandTotalOrders) * 100) : 0;
+
+  const sellerEventIds = events.map((e) => e.id);
+  const resaleActive =
+    sellerEventIds.length === 0
+      ? 0
+      : await db.resaleListing.count({
+          where: {
+            status: "ACTIVE",
+            ticket: {
+              order: {
+                ticketCategory: { eventId: { in: sellerEventIds } },
+              },
+            },
+          },
+        });
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">Revenue and sales across all your events.</p>
+    <div className="min-h-full bg-gray-50 font-sans">
+      {/* ── Header ── */}
+      <div className="relative overflow-hidden bg-gray-800 px-8 py-10">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: "radial-gradient(circle, #16b5b8 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="pointer-events-none absolute -top-24 left-1/3 h-64 w-96 rounded-full bg-primary-500/20 blur-[80px]" />
+
+        <div className="relative flex items-end justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-400 mb-1">
+              Seller dashboard
+            </p>
+            <h1 className="text-3xl font-black tracking-tight text-white">Analytics</h1>
+            <p className="mt-1 text-sm text-gray-400">Revenue and sales across all your events.</p>
+          </div>
+
+          {events.length > 0 && (
+            <div className="flex items-center gap-2">
+              <a href="/api/seller/export?format=csv" download>
+                <button className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-white/10 transition-colors">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  CSV
+                </button>
+              </a>
+              <a href="/api/seller/export?format=xlsx" download>
+                <button className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-white/10 transition-colors">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Excel
+                </button>
+              </a>
+            </div>
+          )}
         </div>
-        {events.length > 0 && (
-          <div className="flex items-center gap-2">
-            <a href="/api/seller/export?format=csv" download>
-              <Button variant="ghost" size="sm">
-                <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                CSV
-              </Button>
-            </a>
-            <a href="/api/seller/export?format=xlsx" download>
-              <Button variant="ghost" size="sm">
-                <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Excel
-              </Button>
+      </div>
+
+      {/* ── Charts ── */}
+      <div className="p-8">
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">
+              <svg className="h-8 w-8 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <p className="mt-4 text-lg font-bold text-gray-900">No data yet</p>
+            <p className="mt-1 text-sm text-gray-500">Create and publish events to see your analytics.</p>
+            <a href="/seller/events/new" className="mt-5">
+              <button className="rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-700 transition-colors">
+                Create your first event
+              </button>
             </a>
           </div>
+        ) : (
+          <AnalyticsCharts
+            eventStats={eventStats}
+            grandRevenue={grandRevenue}
+            grandCollected={grandCollected}
+            grandSold={grandSold}
+            grandAvailable={grandAvailable}
+            categoryStats={categoryStats}
+            grandDefaultRate={grandDefaultRate}
+            grandNearingRevocation={grandNearingRevocation}
+            grandRevoked={grandRevoked}
+            resaleActive={resaleActive}
+          />
         )}
       </div>
-
-      {/* Grand totals */}
-      <div className="mb-8 grid grid-cols-3 gap-4">
-        {[
-          { label: "Total revenue", value: `KES ${grandRevenue.toLocaleString()}`, sub: "at full price" },
-          { label: "Collected so far", value: `KES ${grandCollected.toLocaleString()}`, sub: "actual payments received" },
-          { label: "Tickets sold", value: grandSold.toLocaleString(), sub: "across all events" },
-        ].map((s) => (
-          <Card key={s.label}>
-            <CardBody>
-              <p className="text-sm text-gray-500">{s.label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{s.value}</p>
-              <p className="mt-0.5 text-xs text-gray-400">{s.sub}</p>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
-
-      {/* Per-event breakdown */}
-      {eventStats.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-20 text-center">
-          <p className="text-lg font-medium text-gray-900">No events yet</p>
-          <a href="/seller/events/new" className="mt-3 text-sm text-violet-600 hover:underline">Create your first event →</a>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {eventStats.map(({ event, revenue, collected, sold, pendingInstallments }) => {
-            const totalAvail = event.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
-            const collectionRate = revenue > 0 ? Math.round((collected / revenue) * 100) : 0;
-
-            return (
-              <Card key={event.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={`/seller/events/${event.id}`}
-                          className="font-semibold text-gray-900 hover:text-violet-700"
-                        >
-                          {event.title}
-                        </a>
-                        <Badge variant={statusVariant[event.status]}>{event.status}</Badge>
-                      </div>
-                      <p className="text-sm text-gray-500">{format(event.date, "dd MMM yyyy · HH:mm")}</p>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">KES {revenue.toLocaleString()}</p>
-                  </div>
-                </CardHeader>
-                <CardBody>
-                  <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Sold</p>
-                      <p className="mt-1 text-xl font-bold text-gray-900">{sold}</p>
-                      <p className="text-xs text-gray-500">of {totalAvail} available</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Collected</p>
-                      <p className="mt-1 text-xl font-bold text-gray-900">KES {collected.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500">{collectionRate}% of expected</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Outstanding</p>
-                      <p className="mt-1 text-xl font-bold text-amber-600">
-                        KES {pendingInstallments.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-gray-500">pending installments</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide">Collection rate</p>
-                      <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
-                        <div
-                          className="h-2 rounded-full bg-violet-500"
-                          style={{ width: `${collectionRate}%` }}
-                        />
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500">{collectionRate}%</p>
-                    </div>
-                  </div>
-
-                  {/* Per-category breakdown */}
-                  {event.ticketCategories.length > 1 && (
-                    <div className="mt-4 border-t border-gray-100 pt-4">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">By category</p>
-                      <div className="space-y-1">
-                        {event.ticketCategories.map((cat) => (
-                          <div key={cat.id} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-700">{cat.name}</span>
-                            <span className="text-gray-500">
-                              {cat.soldQuantity} sold · KES {(Number(cat.price) * cat.soldQuantity).toLocaleString()}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardBody>
-              </Card>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

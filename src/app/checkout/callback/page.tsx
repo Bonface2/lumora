@@ -32,7 +32,7 @@ export default async function CallbackPage({
         </div>
         <h1 className="text-2xl font-bold text-gray-900">Payment failed</h1>
         <p className="mt-2 text-gray-500">Your payment could not be verified. No charge was made.</p>
-        <Link href="/" className="mt-6 text-violet-600 hover:underline text-sm">
+        <Link href="/" className="mt-6 text-primary-600 hover:underline text-sm">
           Back to home
         </Link>
       </div>
@@ -69,7 +69,7 @@ export default async function CallbackPage({
           {tickets.map((t) => (
             <div key={t.id} className="rounded-xl border border-gray-200 bg-white px-8 py-4 shadow-sm">
               <p className="text-sm text-gray-500">Ticket number</p>
-              <p className="mt-1 text-xl font-mono font-bold text-violet-600">
+              <p className="mt-1 text-xl font-mono font-bold text-primary-600">
                 {t.ticketNumber}
               </p>
             </div>
@@ -87,7 +87,7 @@ export default async function CallbackPage({
       <div className="mt-6 flex gap-3">
         <Link
           href="/buyer"
-          className="rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-violet-700"
+          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-700"
         >
           View my tickets
         </Link>

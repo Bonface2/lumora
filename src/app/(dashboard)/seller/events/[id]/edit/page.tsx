@@ -57,7 +57,7 @@ export default async function EditEventPage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
-        <a href={`/seller/events/${id}`} className="text-sm text-violet-600 hover:underline">
+        <a href={`/seller/events/${id}`} className="text-sm text-primary-600 hover:underline">
           ← Back to event
         </a>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Edit event</h1>

@@ -53,7 +53,7 @@ export default function PayInstallmentPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function PayInstallmentPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <a href="/" className="text-xl font-bold text-violet-600">Lumora</a>
+          <a href="/" className="text-xl font-bold text-primary-600">Lumora</a>
         </div>
 
         <Card>
@@ -108,7 +108,7 @@ export default function PayInstallmentPage() {
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-gray-200">
                   <div
-                    className="h-1.5 rounded-full bg-violet-500"
+                    className="h-1.5 rounded-full bg-primary-500"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
@@ -117,7 +117,7 @@ export default function PayInstallmentPage() {
 
             <div className="flex items-center justify-between border-t pt-3">
               <span className="font-semibold text-gray-900">Due now</span>
-              <span className="text-xl font-bold text-violet-600">
+              <span className="text-xl font-bold text-primary-600">
                 KES {preview.amount.toLocaleString()}
               </span>
             </div>

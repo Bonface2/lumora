@@ -58,8 +58,8 @@ export async function scheduleInstallmentReminder(
 ) {
   const reminderDate = new Date(dueDate);
   reminderDate.setDate(reminderDate.getDate() - 3);
-  const delay = reminderDate.getTime() - Date.now();
-  if (delay <= 0) return;
+  // If the reminder window has already passed, fire immediately (delay = 0)
+  const delay = Math.max(0, reminderDate.getTime() - Date.now());
 
   await installmentReminderQueue.add(
     "send-reminder",

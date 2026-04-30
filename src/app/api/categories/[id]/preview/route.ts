@@ -36,6 +36,9 @@ export async function GET(
     eventTitle: category.event.title,
     eventDate: category.event.date.toISOString(),
     venue: category.event.venue,
+    city: category.event.city,
+    coverImage: category.event.coverImage,
+    eventSlug: category.event.slug,
     allowInstallments: category.allowInstallments,
     installmentPlan: plan
       ? {
