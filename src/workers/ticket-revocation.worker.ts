@@ -49,7 +49,7 @@ const worker = new Worker<TicketRevocationJob>(
       reason: "Payment not received by the due date.",
     });
   },
-  { connection }
+  { connection: connection() }
 );
 
 worker.on("failed", (job, err) => {

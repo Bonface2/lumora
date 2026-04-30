@@ -40,7 +40,7 @@ const worker = new Worker<InstallmentReminderJob>(
       data: { reminderSentAt: new Date() },
     });
   },
-  { connection }
+  { connection: connection() }
 );
 
 worker.on("failed", (job, err) => {

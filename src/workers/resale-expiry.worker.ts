@@ -18,7 +18,7 @@ const worker = new Worker<ResaleExpiryJob>(
       data: { status: "REVOKED" },
     });
   },
-  { connection }
+  { connection: connection() }
 );
 
 worker.on("failed", (job, err) => {
