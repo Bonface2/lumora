@@ -77,10 +77,10 @@ export default async function DefaultersPage() {
   });
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 sm:p-6 md:p-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Defaulters</h1>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Defaulters</h1>
           <p className="mt-1 text-sm text-gray-500">
             Buyers with overdue installment payments
           </p>

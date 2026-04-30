@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { sendTicketConfirmation } from "@/lib/email";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const session = await auth();
   if (!session?.user) {

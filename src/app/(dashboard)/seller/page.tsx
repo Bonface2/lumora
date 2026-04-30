@@ -45,7 +45,7 @@ export default async function SellerEventsPage() {
   return (
     <div className="min-h-full bg-gray-50 font-sans">
       {/* ── Vibrant header ── */}
-      <div className="relative overflow-hidden bg-gray-800 px-8 py-10">
+      <div className="relative overflow-hidden bg-gray-800 px-4 py-8 sm:px-8 sm:py-10">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.06]"
           style={{
@@ -55,13 +55,13 @@ export default async function SellerEventsPage() {
         />
         <div className="pointer-events-none absolute -top-24 left-1/3 h-64 w-96 rounded-full bg-primary-500/20 blur-[80px]" />
 
-        <div className="relative flex items-end justify-between">
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-primary-400 mb-1">
               Seller dashboard
             </p>
-            <h1 className="text-3xl font-black tracking-tight text-white">My Events</h1>
-            <div className="mt-3 flex items-center gap-6">
+            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">My Events</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-4 sm:gap-6">
               <div>
                 <p className="text-2xl font-black text-white">{events.length}</p>
                 <p className="text-xs text-gray-500">events</p>
@@ -79,7 +79,7 @@ export default async function SellerEventsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {events.length > 0 && (
               <>
                 <a href="/api/seller/export?format=csv" download>
@@ -113,7 +113,7 @@ export default async function SellerEventsPage() {
       </div>
 
       {/* ── Grid ── */}
-      <div className="p-8">
+      <div className="p-4 sm:p-6 md:p-8">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">

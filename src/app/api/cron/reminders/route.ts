@@ -3,6 +3,8 @@ import { format, addDays } from "date-fns";
 import { db } from "@/lib/db";
 import { sendInstallmentReminder } from "@/lib/email";
 
+export const dynamic = "force-dynamic";
+
 // Secured with a shared secret — set CRON_SECRET in your env vars.
 // Call daily: GET /api/cron/reminders?secret=<CRON_SECRET>
 // On Vercel, wire this up via vercel.json cron jobs.

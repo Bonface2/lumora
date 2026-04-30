@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as XLSX from "xlsx";
 
+export const dynamic = "force-dynamic";
+
 const MS_PER_DAY = 86_400_000;
 
 function calcDaysToRevocation(

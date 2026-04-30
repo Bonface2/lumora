@@ -9,6 +9,8 @@ import {
 } from "@/lib/queue";
 import { format } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 function generateTicketNumber(prefix: string): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const random = Array.from({ length: 8 }, () =>
