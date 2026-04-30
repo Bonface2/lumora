@@ -18,9 +18,7 @@ const schema = z
     email: z.email("Enter a valid email"),
     phone: z
       .string()
-      .regex(/^\+?[\d\s\-]{7,15}$/, "Enter a valid phone number")
-      .optional()
-      .or(z.literal("")),
+      .regex(/^\+?[\d\s\-]{7,15}$/, "Enter a valid phone number"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
     role: z.enum(["BUYER", "SELLER"]),
@@ -36,6 +34,7 @@ export default function RegisterPage() {
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState("");
 
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const initialRole = searchParams.get("role")?.toUpperCase() === "SELLER" ? "SELLER" : "BUYER";
 
   const {
@@ -53,12 +52,13 @@ export default function RegisterPage() {
 
   async function onSubmit(data: FormData) {
     setServerError("");
-    const res = await registerUser({ ...data, phone: data.phone || undefined });
+    const res = await registerUser(data);
     if (!res.ok) {
       setServerError(res.error);
       return;
     }
-    router.push("/login?registered=1");
+    const next = callbackUrl !== "/" ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : "";
+    router.push(`/login?registered=1${next}`);
   }
 
   return (
@@ -77,7 +77,7 @@ export default function RegisterPage() {
           type="button"
           onClick={async () => {
             await setPendingRoleCookie(role);
-            signIn("google", { callbackUrl: "/" });
+            signIn("google", { callbackUrl });
           }}
           className="mb-4 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
         >
@@ -142,7 +142,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <Label htmlFor="phone">Phone number <span className="text-gray-400 font-normal">(optional)</span></Label>
+            <Label htmlFor="phone" required>Phone number</Label>
             <Input
               id="phone"
               type="tel"
@@ -184,7 +184,10 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <a href="/login" className="font-medium text-primary-600 hover:underline">
+          <a
+            href={callbackUrl !== "/" ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/login"}
+            className="font-medium text-primary-600 hover:underline"
+          >
             Sign in
           </a>
         </p>

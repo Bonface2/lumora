@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { sendTicketConfirmation, sendInstallmentReceipt } from "@/lib/email";
+import { sendTicketConfirmation, sendInstallmentReceipt, sendCartConfirmation } from "@/lib/email";
 import {
   scheduleInstallmentReminder,
   scheduleTicketRevocation,
@@ -61,6 +61,98 @@ export async function POST(req: Request) {
   });
 
   if (!transaction || transaction.status === "success") {
+    return NextResponse.json({ received: true });
+  }
+
+  // ── Cart checkout (multi-order, upfront only) ─────────────────────────────
+  const txMeta = transaction.metadata as Record<string, unknown> | null;
+  if (txMeta?.isCart === true) {
+    const orderIds = (txMeta.orderIds as string[]) ?? [transaction.orderId];
+
+    const cartOrders = await db.order.findMany({
+      where: { id: { in: orderIds } },
+      include: {
+        buyer: true,
+        ticketCategory: { include: { event: true } },
+        payments: { orderBy: { paymentNumber: "asc" } },
+        tickets: true,
+      },
+    });
+
+    if (!cartOrders.length) return NextResponse.json({ received: true });
+
+    const cartBuyer = cartOrders[0].buyer;
+    const cartEvent = cartOrders[0].ticketCategory.event;
+
+    const ticketsByCategory = await db.$transaction(async (tx) => {
+      await tx.paystackTransaction.update({
+        where: { reference },
+        data: { status: "success", paystackRef: event.data.id?.toString() },
+      });
+
+      const result: Array<{ name: string; quantity: number; ticketNumbers: string[] }> = [];
+
+      const prefix = cartEvent.title
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 4);
+
+      for (const order of cartOrders) {
+        const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
+        if (initialPayment && initialPayment.status !== "PAID") {
+          await tx.installmentPayment.update({
+            where: { id: initialPayment.id },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: { paidAmount: order.totalAmount, status: "PAID_IN_FULL" },
+        });
+
+        await tx.ticketCategory.update({
+          where: { id: order.ticketCategoryId },
+          data: { soldQuantity: { increment: order.quantity } },
+        });
+
+        if (order.tickets.length === 0) {
+          const numbers: string[] = [];
+          for (let i = 0; i < order.quantity; i++) {
+            const ticketNumber = generateTicketNumber(prefix);
+            await tx.ticket.create({
+              data: {
+                orderId: order.id,
+                ticketCategoryId: order.ticketCategoryId,
+                ticketNumber,
+                status: "ACTIVE",
+                currentOwnerId: cartBuyer.id,
+              },
+            });
+            numbers.push(ticketNumber);
+          }
+          result.push({ name: order.ticketCategory.name, quantity: order.quantity, ticketNumbers: numbers });
+        }
+      }
+
+      return result;
+    });
+
+    try {
+      await sendCartConfirmation({
+        to: cartBuyer.email,
+        name: cartBuyer.name ?? "there",
+        eventTitle: cartEvent.title,
+        eventDate: format(cartEvent.date, "EEEE, dd MMMM yyyy · HH:mm"),
+        venue: `${cartEvent.venue}${cartEvent.city ? `, ${cartEvent.city}` : ""}`,
+        categories: ticketsByCategory,
+      });
+    } catch (err) {
+      console.error("[webhook] cart email threw:", err);
+    }
+
     return NextResponse.json({ received: true });
   }
 

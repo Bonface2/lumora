@@ -130,6 +130,7 @@ export async function GET(
     "Order ID": p.orderId,
     "Name": p.order.buyer.name ?? "",
     "Email": p.order.buyer.email,
+    "Phone": p.order.buyer.phone ?? "",
     "Category": p.order.ticketCategory.name,
     "Payment #": p.paymentNumber,
     "Amount (KES)": Number(p.amount),

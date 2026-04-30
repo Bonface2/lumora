@@ -287,7 +287,102 @@ export async function sendTicketConfirmation({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   2. Installment receipt
+   2. Cart confirmation (multi-category upfront purchase)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendCartConfirmation({
+  to,
+  name,
+  eventTitle,
+  eventDate,
+  venue,
+  categories,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+  eventDate: string;
+  venue: string;
+  categories: Array<{ name: string; quantity: number; ticketNumbers: string[] }>;
+}) {
+  const allTickets = categories.flatMap((c) => c.ticketNumbers.map((num) => ({ num, catName: c.name })));
+  const totalTickets = allTickets.length;
+
+  const attachments = await Promise.all(
+    allTickets.map(async (t, i) => ({
+      filename: `ticket-${i + 1}-qr.png`,
+      content: await QRCode.toBuffer(t.num, { width: 300, margin: 2 }),
+      contentId: `ticket-qr-${i}`,
+    }))
+  );
+
+  let attachmentIndex = 0;
+  const ticketCards = categories
+    .map((cat) =>
+      cat.ticketNumbers
+        .map((num, ti) => {
+          const idx = attachmentIndex++;
+          return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="border:1px solid #e0f7f7;border-radius:12px;overflow:hidden;margin-top:16px;">
+      <tr>
+        <td style="padding:18px 20px 14px;background:#f0fdfc;">
+          <p style="margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:1.5px;
+                     text-transform:uppercase;color:#0f9699;">
+            ${cat.name}${cat.ticketNumbers.length > 1 ? ` · Ticket ${ti + 1}` : ""}
+          </p>
+          <p style="margin:0;font-size:20px;font-family:monospace;font-weight:700;
+                     color:#0d7a7d;letter-spacing:2px;">${num}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 20px;text-align:center;background:#ffffff;">
+          <img src="cid:ticket-qr-${idx}" alt="QR Code" width="180" height="180"
+               style="border:3px solid #0f9699;border-radius:10px;display:block;margin:0 auto;" />
+          <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">
+            Show this QR code at the entrance
+          </p>
+        </td>
+      </tr>
+    </table>`;
+        })
+        .join("")
+    )
+    .join("");
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      You're in, ${name}! 🎉
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      Your ${totalTickets} ticket${totalTickets > 1 ? "s are" : " is"} confirmed. See you at the event!
+    </p>
+
+    ${infoCard([
+      { label: "Event", value: eventTitle },
+      { label: "Date",  value: eventDate },
+      { label: "Venue", value: venue },
+    ])}
+
+    ${ticketCards}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your ${totalTickets} ticket${totalTickets > 1 ? "s" : ""} for ${eventTitle} ✓`,
+    attachments,
+    html: shell({
+      preheader: `You're going to ${eventTitle}! Your tickets are confirmed.`,
+      headline: eventTitle,
+      label: "Booking confirmed",
+      body,
+    }),
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3. Installment receipt
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export async function sendInstallmentReceipt({

@@ -146,6 +146,106 @@ export async function createOrder(input: {
   return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
 }
 
+export async function createCartOrder(input: {
+  items: Array<{ ticketCategoryId: string; quantity: number }>;
+}): Promise<ApiResponse<{ paymentUrl: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Please sign in to continue." };
+  if (!input.items.length) return { ok: false, error: "No items in cart." };
+
+  const categories = await db.ticketCategory.findMany({
+    where: { id: { in: input.items.map((i) => i.ticketCategoryId) } },
+    include: { event: true },
+  });
+
+  const errors: string[] = [];
+  for (const item of input.items) {
+    const qty = Math.max(1, item.quantity);
+    const cat = categories.find((c) => c.id === item.ticketCategoryId);
+    if (!cat) { errors.push(`Category not found.`); continue; }
+    if (cat.event.status !== "PUBLISHED") { errors.push(`${cat.name}: event not available.`); continue; }
+    const available = cat.totalQuantity - cat.soldQuantity;
+    if (available <= 0) { errors.push(`${cat.name} is sold out.`); continue; }
+    if (qty > available) {
+      errors.push(`Only ${available} ${cat.name} ticket${available > 1 ? "s" : ""} remaining.`);
+    }
+  }
+  if (errors.length) return { ok: false, error: errors.join(" ") };
+
+  const enriched = input.items.map((item) => {
+    const cat = categories.find((c) => c.id === item.ticketCategoryId)!;
+    const quantity = Math.max(1, item.quantity);
+    return { ticketCategoryId: item.ticketCategoryId, quantity, totalAmount: Number(cat.price) * quantity };
+  });
+  const grandTotal = enriched.reduce((sum, i) => sum + i.totalAmount, 0);
+  const reference = generateReference("LUM");
+
+  const orderIds = await db.$transaction(async (tx) => {
+    const ids: string[] = [];
+
+    for (const item of enriched) {
+      const order = await tx.order.create({
+        data: {
+          buyerId: session.user.id,
+          ticketCategoryId: item.ticketCategoryId,
+          quantity: item.quantity,
+          totalAmount: item.totalAmount,
+          paidAmount: 0,
+          status: "PENDING",
+          usesInstallments: false,
+        },
+      });
+      ids.push(order.id);
+
+      await tx.installmentPayment.create({
+        data: {
+          orderId: order.id,
+          paymentNumber: 0,
+          amount: item.totalAmount,
+          dueDate: new Date(),
+          status: "PENDING",
+        },
+      });
+    }
+
+    await tx.paystackTransaction.create({
+      data: {
+        orderId: ids[0],
+        amount: grandTotal,
+        reference,
+        status: "pending",
+        metadata: { orderIds: ids, isCart: true, paymentNumber: 0 },
+      },
+    });
+
+    return ids;
+  });
+
+  const buyer = await db.user.findUniqueOrThrow({
+    where: { id: session.user.id },
+    select: { email: true },
+  });
+
+  const paystack = await initializePayment({
+    email: buyer.email,
+    amount: toKobo(grandTotal),
+    reference,
+    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
+    metadata: { orderIds, isCart: true, paymentNumber: 0 },
+  });
+
+  if (!paystack.status) {
+    await db.$transaction(async (tx) => {
+      await tx.paystackTransaction.deleteMany({ where: { reference } });
+      await tx.installmentPayment.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.order.deleteMany({ where: { id: { in: orderIds } } });
+    });
+    return { ok: false, error: "Failed to initialise payment. Please try again." };
+  }
+
+  return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+}
+
 export async function payInstallment(
   orderId: string
 ): Promise<ApiResponse<{ paymentUrl: string }>> {

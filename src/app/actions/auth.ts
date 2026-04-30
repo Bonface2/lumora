@@ -9,7 +9,7 @@ import type { ApiResponse } from "@/types";
 const registerSchema = z.object({
   name: z.string().min(2),
   email: z.email(),
-  phone: z.string().min(7).optional(),
+  phone: z.string().min(7),
   password: z.string().min(8),
   role: z.enum(["BUYER", "SELLER"]),
 });
@@ -32,7 +32,7 @@ export async function registerUser(
   const hashed = await bcrypt.hash(password, 12);
 
   const user = await db.user.create({
-    data: { name, email, phone: phone ?? null, password: hashed, role },
+    data: { name, email, phone, password: hashed, role },
   });
 
   return { ok: true, data: { id: user.id } };
