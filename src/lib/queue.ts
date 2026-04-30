@@ -1,11 +1,6 @@
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
 
-const connection = new IORedis(
-  process.env.REDIS_URL ?? "redis://localhost:6379",
-  { maxRetriesPerRequest: null }
-);
-
 // ─── System-wide constants ────────────────────────────────────────────────────
 
 export const RESALE_REVOKE_DAYS_BEFORE_EVENT = 3;
@@ -17,21 +12,6 @@ export const QUEUES = {
   TICKET_REVOCATION: "ticket-revocation",
   RESALE_EXPIRY: "resale-expiry",
 } as const;
-
-// ─── Queues ───────────────────────────────────────────────────────────────────
-
-export const installmentReminderQueue = new Queue(
-  QUEUES.INSTALLMENT_REMINDER,
-  { connection }
-);
-
-export const ticketRevocationQueue = new Queue(QUEUES.TICKET_REVOCATION, {
-  connection,
-});
-
-export const resaleExpiryQueue = new Queue(QUEUES.RESALE_EXPIRY, {
-  connection,
-});
 
 // ─── Job Payload Types ────────────────────────────────────────────────────────
 
@@ -49,6 +29,52 @@ export interface ResaleExpiryJob {
   resaleListingId: string;
 }
 
+// ─── Lazy singletons — connection and queues are only created on first use ───
+// This prevents module-level IORedis connections from crashing serverless
+// environments (e.g. Vercel) where Redis is not available at import time.
+
+let _connection: IORedis | null = null;
+let _installmentReminderQueue: Queue | null = null;
+let _ticketRevocationQueue: Queue | null = null;
+let _resaleExpiryQueue: Queue | null = null;
+
+function getConnection(): IORedis {
+  if (!_connection) {
+    _connection = new IORedis(
+      process.env.REDIS_URL ?? "redis://localhost:6379",
+      { maxRetriesPerRequest: null }
+    );
+  }
+  return _connection;
+}
+
+function getInstallmentReminderQueue(): Queue {
+  if (!_installmentReminderQueue) {
+    _installmentReminderQueue = new Queue(QUEUES.INSTALLMENT_REMINDER, {
+      connection: getConnection(),
+    });
+  }
+  return _installmentReminderQueue;
+}
+
+function getTicketRevocationQueue(): Queue {
+  if (!_ticketRevocationQueue) {
+    _ticketRevocationQueue = new Queue(QUEUES.TICKET_REVOCATION, {
+      connection: getConnection(),
+    });
+  }
+  return _ticketRevocationQueue;
+}
+
+function getResaleExpiryQueue(): Queue {
+  if (!_resaleExpiryQueue) {
+    _resaleExpiryQueue = new Queue(QUEUES.RESALE_EXPIRY, {
+      connection: getConnection(),
+    });
+  }
+  return _resaleExpiryQueue;
+}
+
 // ─── Schedule Helpers ─────────────────────────────────────────────────────────
 
 export async function scheduleInstallmentReminder(
@@ -58,10 +84,9 @@ export async function scheduleInstallmentReminder(
 ) {
   const reminderDate = new Date(dueDate);
   reminderDate.setDate(reminderDate.getDate() - 3);
-  // If the reminder window has already passed, fire immediately (delay = 0)
   const delay = Math.max(0, reminderDate.getTime() - Date.now());
 
-  await installmentReminderQueue.add(
+  await getInstallmentReminderQueue().add(
     "send-reminder",
     { installmentPaymentId, orderId } satisfies InstallmentReminderJob,
     { delay, jobId: `reminder-${installmentPaymentId}`, removeOnComplete: true }
@@ -79,7 +104,7 @@ export async function scheduleTicketRevocation(
   const delay = revocationDate.getTime() - Date.now();
   if (delay <= 0) return;
 
-  await ticketRevocationQueue.add(
+  await getTicketRevocationQueue().add(
     "revoke-ticket",
     { orderId, installmentPaymentId } satisfies TicketRevocationJob,
     {
@@ -97,7 +122,7 @@ export async function scheduleResaleExpiry(
   const delay = expiresAt.getTime() - Date.now();
   if (delay <= 0) return;
 
-  await resaleExpiryQueue.add(
+  await getResaleExpiryQueue().add(
     "expire-listing",
     { resaleListingId } satisfies ResaleExpiryJob,
     {
@@ -108,32 +133,23 @@ export async function scheduleResaleExpiry(
   );
 }
 
-/**
- * Cancel all scheduled reminder and revocation jobs for a set of installment
- * payment IDs. Called when a buyer pays their balance in full or when an order
- * is transferred to a new owner.
- */
 export async function cancelInstallmentJobs(
   installmentPaymentIds: string[]
 ): Promise<void> {
+  const reminderQ = getInstallmentReminderQueue();
+  const revocationQ = getTicketRevocationQueue();
+
   for (const id of installmentPaymentIds) {
-    const reminderJob = await installmentReminderQueue.getJob(`reminder-${id}`);
+    const reminderJob = await reminderQ.getJob(`reminder-${id}`);
     await reminderJob?.remove();
 
-    const revocationJob = await ticketRevocationQueue.getJob(`revoke-${id}`);
+    const revocationJob = await revocationQ.getJob(`revoke-${id}`);
     await revocationJob?.remove();
   }
 }
 
 // ─── Expiry Date Helpers ──────────────────────────────────────────────────────
 
-/**
- * Compute the correct expiry date for a resale listing.
- *
- * - Fully-paid tickets: expires when the event ends (no urgency, buyer owns it outright).
- * - Partially-paid tickets: expires revokeBeforeEventDays before the event so
- *   the ticket can be reclaimed if it remains unsold.
- */
 export function computeResaleExpiry(
   isFullyPaid: boolean,
   eventDate: Date,
@@ -148,4 +164,4 @@ export function computeResaleExpiry(
   return expiry;
 }
 
-export { connection };
+export { getConnection as connection };
