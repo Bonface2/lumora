@@ -73,6 +73,24 @@ function RegisterForm() {
           </div>
         )}
 
+        {/* Role toggle — choose first so Google OAuth carries the right role */}
+        <div className="mb-4 flex rounded-lg border border-gray-200 p-1 gap-1">
+          {(["BUYER", "SELLER"] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setValue("role", r)}
+              className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                role === r
+                  ? "bg-primary-600 text-white"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {r === "BUYER" ? "Buy Tickets" : "Sell Tickets"}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           onClick={async () => {
@@ -100,23 +118,6 @@ function RegisterForm() {
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Role toggle */}
-          <div className="flex rounded-lg border border-gray-200 p-1 gap-1">
-            {(["BUYER", "SELLER"] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setValue("role", r)}
-                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                  role === r
-                    ? "bg-primary-600 text-white"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {r === "BUYER" ? "Buy Tickets" : "Sell Tickets"}
-              </button>
-            ))}
-          </div>
 
           <div>
             <Label htmlFor="name" required>Full name</Label>

@@ -61,9 +61,14 @@ model User {
   role          Role      @default(BUYER)
   emailVerified DateTime?
   image         String?
-  phone         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  phone                  String?
+  paystackSubaccountCode String?
+  paystackBankCode       String?
+  paystackBankName       String?
+  paystackAccountNumber  String?
+  paystackAccountName    String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   accounts        Account[]
   sessions        Session[]
@@ -128,9 +133,10 @@ model Event {
   venue       String
   city        String?
   coverImage  String?
-  status      EventStatus @default(DRAFT)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  status             EventStatus @default(DRAFT)
+  platformFeePercent Decimal?    @db.Decimal(5, 2) // overrides global 6% if set
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
   seller           User             @relation(fields: [sellerId], references: [id])
   ticketCategories TicketCategory[]
@@ -239,6 +245,7 @@ model InstallmentPayment {
   installmentScheduleItemId String? // null for the initial payment
   paymentNumber             Int // 0 = initial, 1+ = follow-ons
   amount                    Decimal                  @db.Decimal(10, 2)
+  paidAmount                Decimal                  @default(0) @db.Decimal(10, 2)
   dueDate                   DateTime
   paidAt                    DateTime?
   status                    InstallmentPaymentStatus @default(PENDING)

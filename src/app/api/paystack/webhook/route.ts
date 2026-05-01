@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { sendTicketConfirmation, sendInstallmentReceipt, sendCartConfirmation } from "@/lib/email";
 import {
   scheduleInstallmentReminder,
+  scheduleDefaultWarnings,
   scheduleTicketRevocation,
   cancelInstallmentJobs,
 } from "@/lib/queue";
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
         if (initialPayment && initialPayment.status !== "PAID") {
           await tx.installmentPayment.update({
             where: { id: initialPayment.id },
-            data: { status: "PAID", paidAt: new Date() },
+            data: { status: "PAID", paidAt: new Date(), paidAmount: initialPayment.amount },
           });
         }
 
@@ -163,7 +164,8 @@ export async function POST(req: Request) {
   const event_ = ticketCategory.event;
   const plan = ticketCategory.installmentPlan;
 
-  const isFollowOnPayment = !!transaction.installmentPaymentId;
+  const paymentMode = (txMeta?.paymentMode as string) ?? "installment";
+  const isFollowOnPayment = !!transaction.installmentPaymentId || txMeta?.isFollowOn === true;
 
   await db.$transaction(async (tx) => {
     // Mark Paystack transaction as successful
@@ -172,18 +174,47 @@ export async function POST(req: Request) {
       data: { status: "success", paystackRef: event.data.id?.toString() },
     });
 
-    // Mark the correct installment payment as PAID
-    if (isFollowOnPayment) {
+    // Mark installment payment records as PAID based on mode
+    if (paymentMode === "complete") {
+      for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && (p.status === "PENDING" || p.status === "OVERDUE"))) {
+        await tx.installmentPayment.update({
+          where: { id: payment.id },
+          data: { status: "PAID", paidAt: new Date(), paidAmount: payment.amount },
+        });
+      }
+    } else if (paymentMode === "custom") {
+      let remaining = amountNaira;
+      for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING")) {
+        const alreadyPaid = Number(payment.paidAmount);
+        const stillOwed = Number(payment.amount) - alreadyPaid;
+        if (remaining >= stillOwed - 0.01) {
+          await tx.installmentPayment.update({
+            where: { id: payment.id },
+            data: { status: "PAID", paidAt: new Date(), paidAmount: payment.amount },
+          });
+          remaining -= stillOwed;
+          if (remaining <= 0) break;
+        } else {
+          // Partial credit toward this installment
+          await tx.installmentPayment.update({
+            where: { id: payment.id },
+            data: { paidAmount: { increment: remaining } },
+          });
+          break;
+        }
+      }
+    } else if (isFollowOnPayment && transaction.installmentPaymentId) {
+      const installment = order.payments.find((p) => p.id === transaction.installmentPaymentId);
       await tx.installmentPayment.update({
-        where: { id: transaction.installmentPaymentId! },
-        data: { status: "PAID", paidAt: new Date() },
+        where: { id: transaction.installmentPaymentId },
+        data: { status: "PAID", paidAt: new Date(), paidAmount: installment?.amount },
       });
     } else {
       const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
       if (initialPayment && initialPayment.status !== "PAID") {
         await tx.installmentPayment.update({
           where: { id: initialPayment.id },
-          data: { status: "PAID", paidAt: new Date() },
+          data: { status: "PAID", paidAt: new Date(), paidAmount: initialPayment.amount },
         });
       }
     }
@@ -231,9 +262,21 @@ export async function POST(req: Request) {
     }
   });
 
-  // Cancel the reminder + revocation jobs for the payment that was just made
-  if (isFollowOnPayment) {
-    await cancelInstallmentJobs([transaction.installmentPaymentId!]);
+  // Cancel BullMQ reminder + revocation jobs for paid installments
+  if (paymentMode === "complete") {
+    const allIds = order.payments.filter((p) => p.paymentNumber > 0).map((p) => p.id);
+    if (allIds.length) await cancelInstallmentJobs(allIds);
+  } else if (paymentMode === "custom") {
+    // Reload to find which installments are now PAID
+    const freshPayments = await db.installmentPayment.findMany({
+      where: { orderId: order.id, paymentNumber: { gt: 0 }, status: "PAID" },
+      select: { id: true },
+    });
+    const prevPaidIds = new Set(order.payments.filter((p) => p.status === "PAID").map((p) => p.id));
+    const newlyPaidIds = freshPayments.filter((p) => !prevPaidIds.has(p.id)).map((p) => p.id);
+    if (newlyPaidIds.length) await cancelInstallmentJobs(newlyPaidIds);
+  } else if (isFollowOnPayment && transaction.installmentPaymentId) {
+    await cancelInstallmentJobs([transaction.installmentPaymentId]);
   }
 
   // Reload order with fresh ticket
@@ -265,7 +308,7 @@ export async function POST(req: Request) {
         .filter((p) => p.paymentNumber > 0 && p.status === "PENDING")
         .map((p) => ({
           installmentNumber: p.paymentNumber,
-          amount: Number(p.amount),
+          amount: Number(p.amount) - Number(p.paidAmount),
           dueDate: format(p.dueDate, "dd MMM yyyy"),
         }));
 
@@ -294,12 +337,8 @@ export async function POST(req: Request) {
     );
     for (const payment of pendingPayments) {
       await scheduleInstallmentReminder(payment.id, order.id, payment.dueDate);
-      await scheduleTicketRevocation(
-        order.id,
-        payment.id,
-        payment.dueDate,
-        plan.gracePeriodDays
-      );
+      await scheduleDefaultWarnings(payment.id, order.id, payment.dueDate, plan.gracePeriodDays);
+      await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays);
     }
   }
 

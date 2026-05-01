@@ -6,6 +6,7 @@ import {
   initializePayment,
   generateReference,
   toKobo,
+  PLATFORM_FEE_PERCENT,
 } from "@/lib/paystack";
 import type { ApiResponse } from "@/types";
 
@@ -22,7 +23,7 @@ export async function createOrder(input: {
   const category = await db.ticketCategory.findUnique({
     where: { id: input.ticketCategoryId },
     include: {
-      event: true,
+      event: { include: { seller: { select: { paystackSubaccountCode: true } } } },
       installmentPlan: { include: { scheduleItems: { orderBy: { installmentNumber: "asc" } } } },
     },
   });
@@ -130,12 +131,16 @@ export async function createOrder(input: {
     select: { email: true },
   });
 
+  const subaccount = category.event.seller.paystackSubaccountCode ?? undefined;
+  const feePercent = Number(category.event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
+  const transactionCharge = toKobo((amountDueNow * feePercent) / 100);
   const paystack = await initializePayment({
     email: buyer.email,
     amount: toKobo(amountDueNow),
     reference,
     callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
     metadata: { orderId: order.id, paymentNumber: 0 },
+    ...(subaccount && { subaccount, bearer: "account", transaction_charge: transactionCharge }),
   });
 
   if (!paystack.status) {
@@ -155,7 +160,7 @@ export async function createCartOrder(input: {
 
   const categories = await db.ticketCategory.findMany({
     where: { id: { in: input.items.map((i) => i.ticketCategoryId) } },
-    include: { event: true },
+    include: { event: { include: { seller: { select: { paystackSubaccountCode: true } } } } },
   });
 
   const errors: string[] = [];
@@ -226,12 +231,17 @@ export async function createCartOrder(input: {
     select: { email: true },
   });
 
+  // Use the first item's seller subaccount (cart items are typically from one event/seller)
+  const cartSubaccount = categories[0]?.event.seller.paystackSubaccountCode ?? undefined;
+  const cartFeePercent = Number(categories[0]?.event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
+  const cartTransactionCharge = toKobo((grandTotal * cartFeePercent) / 100);
   const paystack = await initializePayment({
     email: buyer.email,
     amount: toKobo(grandTotal),
     reference,
     callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
     metadata: { orderIds, isCart: true, paymentNumber: 0 },
+    ...(cartSubaccount && { subaccount: cartSubaccount, bearer: "account", transaction_charge: cartTransactionCharge }),
   });
 
   if (!paystack.status) {
@@ -247,7 +257,11 @@ export async function createCartOrder(input: {
 }
 
 export async function payInstallment(
-  orderId: string
+  orderId: string,
+  options: {
+    mode: "installment" | "complete" | "custom";
+    customAmount?: number;
+  } = { mode: "installment" }
 ): Promise<ApiResponse<{ paymentUrl: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in to continue." };
@@ -257,6 +271,7 @@ export async function payInstallment(
     include: {
       payments: { orderBy: { paymentNumber: "asc" } },
       buyer: { select: { email: true } },
+      ticketCategory: { include: { event: { include: { seller: { select: { paystackSubaccountCode: true } } } } } },
     },
   });
 
@@ -268,28 +283,53 @@ export async function payInstallment(
   );
   if (!nextPayment) return { ok: false, error: "No pending installment found." };
 
+  const remainingAmount = Number(order.totalAmount) - Number(order.paidAmount);
+  const { mode, customAmount } = options;
+
+  let chargeAmount: number;
+  let installmentPaymentId: string | null = null;
+
+  if (mode === "installment") {
+    chargeAmount = Number(nextPayment.amount) - Number(nextPayment.paidAmount);
+    installmentPaymentId = nextPayment.id;
+  } else if (mode === "complete") {
+    chargeAmount = remainingAmount;
+  } else {
+    if (!customAmount || customAmount <= 0)
+      return { ok: false, error: "Enter a valid amount." };
+    if (customAmount > remainingAmount + 0.01)
+      return { ok: false, error: `Amount cannot exceed the remaining balance of KES ${remainingAmount.toLocaleString()}.` };
+    chargeAmount = customAmount;
+  }
+
   const reference = generateReference("LUM");
 
   await db.paystackTransaction.create({
     data: {
       orderId: order.id,
-      installmentPaymentId: nextPayment.id,
-      amount: nextPayment.amount,
+      installmentPaymentId,
+      amount: chargeAmount,
       reference,
       status: "pending",
       metadata: {
         orderId: order.id,
         paymentNumber: nextPayment.paymentNumber,
+        paymentMode: mode,
+        isFollowOn: true,
       },
     },
   });
 
+  const installmentSubaccount = order.ticketCategory.event.seller.paystackSubaccountCode ?? undefined;
+  const installmentFeePercent = Number(order.ticketCategory.event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
+  const installmentTransactionCharge = toKobo((chargeAmount * installmentFeePercent) / 100);
   const paystack = await initializePayment({
     email: order.buyer.email,
-    amount: toKobo(Number(nextPayment.amount)),
+    amount: toKobo(chargeAmount),
     reference,
     callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderId: order.id, paymentNumber: nextPayment.paymentNumber },
+    metadata: { orderId: order.id, paymentNumber: nextPayment.paymentNumber, paymentMode: mode },
+    ...(installmentSubaccount && { subaccount: installmentSubaccount, bearer: "account", transaction_charge: installmentTransactionCharge }),
   });
 
   if (!paystack.status) {

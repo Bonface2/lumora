@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { format, addDays } from "date-fns";
+import { format, addDays, differenceInCalendarDays } from "date-fns";
 import { db } from "@/lib/db";
 import { sendInstallmentReminder } from "@/lib/email";
 
@@ -49,12 +49,15 @@ export async function GET(req: Request) {
     }
 
     try {
+      const daysUntilDue = Math.max(0, differenceInCalendarDays(payment.dueDate, now));
+      const amountDue = Number(payment.amount) - Number(payment.paidAmount);
       await sendInstallmentReminder({
         to: buyer.email,
         name: buyer.name ?? "there",
         eventTitle: event.title,
-        amount: `KES ${Number(payment.amount).toLocaleString()}`,
+        amount: `KES ${amountDue.toLocaleString()}`,
         dueDate: format(payment.dueDate, "dd MMM yyyy"),
+        daysUntilDue,
         paymentUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer/orders/${payment.orderId}/pay`,
       });
 

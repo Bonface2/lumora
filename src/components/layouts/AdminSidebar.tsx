@@ -6,43 +6,16 @@ import { signOut, useSession } from "next-auth/react";
 const nav = [
   {
     label: "Events",
-    href: "/seller",
+    href: "/admin/events",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
     ),
   },
-  {
-    label: "Analytics",
-    href: "/seller/analytics",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Defaulters",
-    href: "/seller/defaulters",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Payout",
-    href: "/seller/settings",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-      </svg>
-    ),
-  },
 ];
 
-export function SellerSidebar() {
+export function AdminSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;
@@ -52,23 +25,19 @@ export function SellerSidebar() {
 
   return (
     <aside className="flex h-screen w-60 flex-col bg-gray-800">
-      {/* Logo */}
       <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
         <a href="/" className="flex items-center gap-2.5">
           <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
           <span className="text-base font-black tracking-tight text-white">Lumora</span>
         </a>
-        <span className="rounded-full bg-primary-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-400 border border-primary-800">
-          Seller
+        <span className="rounded-full bg-red-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-400 border border-red-800">
+          Admin
         </span>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-3 py-3">
         {nav.map((item) => {
-          const active = item.href === "/seller"
-            ? pathname === "/seller"
-            : pathname.startsWith(item.href);
+          const active = pathname.startsWith(item.href);
           return (
             <a
               key={item.href}
@@ -88,11 +57,10 @@ export function SellerSidebar() {
         })}
       </nav>
 
-      {/* User + sign out */}
       <div className="shrink-0 border-t border-white/10 px-3 py-4 space-y-1">
         {user && (
           <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-xs font-black text-white">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-black text-white">
               {initials}
             </div>
             <div className="min-w-0">

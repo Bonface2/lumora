@@ -498,6 +498,7 @@ export async function sendInstallmentReminder({
   eventTitle,
   amount,
   dueDate,
+  daysUntilDue,
   paymentUrl,
 }: {
   to: string;
@@ -505,14 +506,29 @@ export async function sendInstallmentReminder({
   eventTitle: string;
   amount: string;
   dueDate: string;
+  daysUntilDue: number;
   paymentUrl: string;
 }) {
+  const urgencyLine =
+    daysUntilDue === 0
+      ? "Your installment is <strong>due today</strong>. Pay now to keep your ticket."
+      : daysUntilDue === 1
+      ? "Your installment is <strong>due tomorrow</strong>. Pay now to avoid any issues."
+      : `Your installment is due in <strong>${daysUntilDue} days</strong>. Pay on time to keep your ticket.`;
+
+  const subject =
+    daysUntilDue === 0
+      ? `Due today: ${amount} for ${eventTitle}`
+      : daysUntilDue === 1
+      ? `Due tomorrow: ${amount} for ${eventTitle}`
+      : `Payment due in ${daysUntilDue} days: ${eventTitle}`;
+
   const body = `
     <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
-      Hi ${name}, payment due soon
+      Hi ${name}, payment reminder
     </p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
-      A friendly reminder that your installment is coming up. Pay on time to keep your ticket.
+      ${urgencyLine}
     </p>
 
     ${infoCard([
@@ -538,7 +554,7 @@ export async function sendInstallmentReminder({
   return send({
     from: FROM_EMAIL,
     to,
-    subject: `Payment reminder: ${eventTitle} — due ${dueDate}`,
+    subject,
     html: shell({
       preheader: `Your installment of ${amount} for ${eventTitle} is due on ${dueDate}.`,
       headline: "Payment due soon",
@@ -546,6 +562,78 @@ export async function sendInstallmentReminder({
       accentColor: "#d97706",
       body,
       footerNote: "You're receiving this because you have an active installment plan.",
+    }),
+  });
+}
+
+export async function sendDefaultWarning({
+  to,
+  name,
+  eventTitle,
+  amount,
+  daysUntilRevocation,
+  paymentUrl,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+  amount: string;
+  daysUntilRevocation: number;
+  paymentUrl: string;
+}) {
+  const urgencyLine =
+    daysUntilRevocation === 0
+      ? "Your ticket will be <strong>revoked today</strong> unless you pay now."
+      : daysUntilRevocation === 1
+      ? "Your ticket will be revoked <strong>tomorrow</strong> unless you pay immediately."
+      : `Your ticket will be revoked in <strong>${daysUntilRevocation} days</strong> unless payment is received.`;
+
+  const subject =
+    daysUntilRevocation === 0
+      ? `URGENT: Your ticket for ${eventTitle} will be revoked today`
+      : daysUntilRevocation === 1
+      ? `URGENT: Your ticket for ${eventTitle} will be revoked tomorrow`
+      : `Action required: ${daysUntilRevocation} days until your ticket is revoked`;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name}, your ticket is at risk
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      ${urgencyLine}
+    </p>
+
+    ${infoCard([
+      { label: "Event",            value: eventTitle },
+      { label: "Overdue amount",   value: amount },
+      { label: "Days to revocation", value: daysUntilRevocation === 0 ? "Today" : `${daysUntilRevocation} day${daysUntilRevocation !== 1 ? "s" : ""}` },
+    ])}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#991b1b;line-height:1.5;">
+          <strong>⛔ Warning:</strong> If payment is not received in time, your ticket will be
+          permanently revoked and you will lose access to the event.
+        </td>
+      </tr>
+    </table>
+
+    ${ctaButton("Pay Now to Keep Your Ticket", paymentUrl)}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    html: shell({
+      preheader: `Pay ${amount} now — your ticket for ${eventTitle} will be revoked in ${daysUntilRevocation} day${daysUntilRevocation !== 1 ? "s" : ""}.`,
+      headline: "Ticket revocation warning",
+      label: "Urgent action required",
+      accentColor: "#dc2626",
+      body,
+      footerNote: "You're receiving this because a payment on your installment plan is overdue.",
     }),
   });
 }

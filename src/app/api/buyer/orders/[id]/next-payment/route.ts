@@ -31,15 +31,23 @@ export async function GET(
   );
   if (!nextPayment) return NextResponse.json({ error: "No pending installment found." }, { status: 404 });
 
+  const totalAmount = Number(order.totalAmount);
+  const paidAmount = Number(order.paidAmount);
+  const installmentTotal = Number(nextPayment.amount);
+  const installmentPaid = Number(nextPayment.paidAmount);
+
   return NextResponse.json({
     eventTitle: order.ticketCategory.event.title,
     eventDate: order.ticketCategory.event.date.toISOString(),
     venue: `${order.ticketCategory.event.venue}${order.ticketCategory.event.city ? `, ${order.ticketCategory.event.city}` : ""}`,
     categoryName: order.ticketCategory.name,
     installmentNumber: nextPayment.paymentNumber,
-    amount: Number(nextPayment.amount),
+    amount: installmentTotal - installmentPaid,
+    installmentTotal,
+    installmentPaid,
     dueDate: nextPayment.dueDate.toISOString(),
-    totalAmount: Number(order.totalAmount),
-    paidAmount: Number(order.paidAmount),
+    totalAmount,
+    paidAmount,
+    remainingAmount: totalAmount - paidAmount,
   });
 }
