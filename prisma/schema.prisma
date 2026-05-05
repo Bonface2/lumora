@@ -61,19 +61,20 @@ model User {
   role          Role      @default(BUYER)
   emailVerified DateTime?
   image         String?
-  phone                  String?
-  paystackSubaccountCode String?
-  paystackBankCode       String?
-  paystackBankName       String?
-  paystackAccountNumber  String?
-  paystackAccountName    String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  phone                 String?
+  paystackRecipientCode String?
+  paystackBankCode      String?
+  paystackBankName      String?
+  paystackAccountNumber String?
+  paystackAccountName   String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   accounts        Account[]
   sessions        Session[]
   events          Event[]
   orders          Order[]
+  payouts         Payout[]
   resaleListings  ResaleListing[]
   resalePurchases ResaleListing[] @relation("resale_purchases")
 
@@ -276,6 +277,25 @@ model PaystackTransaction {
   installmentPayment InstallmentPayment? @relation(fields: [installmentPaymentId], references: [id])
 
   @@map("paystack_transactions")
+}
+
+// ─── Payouts ──────────────────────────────────────────────────────────────────
+
+model Payout {
+  id          String   @id @default(cuid())
+  sellerId    String
+  amount      Decimal  @db.Decimal(10, 2)
+  reference   String   @unique
+  paystackRef String?
+  status      String   @default("pending") // pending | success | failed
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  seller User @relation(fields: [sellerId], references: [id])
+
+  @@map("payouts")
 }
 
 // ─── Resale Market ────────────────────────────────────────────────────────────

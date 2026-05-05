@@ -25,26 +25,16 @@ async function paystackRequest<T>(
   return data as T;
 }
 
-export interface InitializePaymentParams {
-  email: string;
-  amount: number; // in kobo
-  reference: string;
-  metadata?: Record<string, unknown>;
-  callback_url?: string;
-  subaccount?: string;
-  bearer?: "account" | "subaccount";
-  transaction_charge?: number; // fixed platform cut in cents (overrides subaccount's percentage_charge)
-}
-
 export interface PaystackBank {
   id: number;
   name: string;
   code: string;
+  type: string; // "kepss" | "mobile_money" | "mobile_money_business"
 }
 
 export async function getBanks(): Promise<PaystackBank[]> {
   const res = await paystackRequest<{ status: boolean; data: PaystackBank[] }>(
-    "/bank?country=ke&currency=KES&perPage=200"
+    "/bank?currency=KES&perPage=200"
   );
   return res.data;
 }
@@ -59,24 +49,60 @@ export async function resolveAccount(
   return { accountName: res.data.account_name };
 }
 
-export async function createSubaccount(params: {
-  businessName: string;
-  bankCode: string;
+export interface CreateTransferRecipientParams {
+  type: string;       // "mobile_money" | "kepss"
+  name: string;
   accountNumber: string;
-}): Promise<{ subaccountCode: string }> {
-  const res = await paystackRequest<{ status: boolean; data: { subaccount_code: string } }>(
-    "/subaccount",
+  bankCode: string;
+}
+
+export async function createTransferRecipient(
+  params: CreateTransferRecipientParams
+): Promise<{ recipientCode: string }> {
+  const res = await paystackRequest<{ status: boolean; data: { recipient_code: string } }>(
+    "/transferrecipient",
     {
       method: "POST",
       body: JSON.stringify({
-        business_name: params.businessName,
-        bank_code: params.bankCode,
+        type: params.type,
+        name: params.name,
         account_number: params.accountNumber,
-        percentage_charge: PLATFORM_FEE_PERCENT,
+        bank_code: params.bankCode,
+        currency: "KES",
       }),
     }
   );
-  return { subaccountCode: res.data.subaccount_code };
+  return { recipientCode: res.data.recipient_code };
+}
+
+export async function initiateTransfer(params: {
+  amount: number; // in cents
+  recipient: string;
+  reference: string;
+  reason?: string;
+}): Promise<{ transferCode: string; status: string }> {
+  const res = await paystackRequest<{
+    status: boolean;
+    data: { transfer_code: string; status: string };
+  }>("/transfer", {
+    method: "POST",
+    body: JSON.stringify({
+      source: "balance",
+      amount: params.amount,
+      recipient: params.recipient,
+      reference: params.reference,
+      reason: params.reason ?? "Lumora ticket sales payout",
+    }),
+  });
+  return { transferCode: res.data.transfer_code, status: res.data.status };
+}
+
+export interface InitializePaymentParams {
+  email: string;
+  amount: number; // in cents
+  reference: string;
+  metadata?: Record<string, unknown>;
+  callback_url?: string;
 }
 
 export interface InitializePaymentResponse {
@@ -124,8 +150,8 @@ export function generateReference(prefix = "LUM"): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 }
 
-export function toKobo(naira: number): number {
-  return Math.round(naira * 100);
+export function toKobo(amount: number): number {
+  return Math.round(amount * 100);
 }
 
 export function fromKobo(kobo: number): number {

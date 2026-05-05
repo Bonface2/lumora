@@ -37,6 +37,18 @@ export async function POST(req: Request) {
 
   const event = JSON.parse(body);
   console.log("[webhook] Event type:", event.event);
+
+  // ── Transfer confirmation ─────────────────────────────────────────────────
+  if (event.event === "transfer.success" || event.event === "transfer.failed") {
+    const { reference, transfer_code } = event.data;
+    const status = event.event === "transfer.success" ? "success" : "failed";
+    await db.payout.updateMany({
+      where: { reference },
+      data: { status, paystackRef: transfer_code },
+    });
+    return NextResponse.json({ received: true });
+  }
+
   if (event.event !== "charge.success") {
     return NextResponse.json({ received: true });
   }

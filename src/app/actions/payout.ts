@@ -2,17 +2,25 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getBanks, resolveAccount, createSubaccount, type PaystackBank } from "@/lib/paystack";
+import {
+  getBanks,
+  resolveAccount,
+  createTransferRecipient,
+  type PaystackBank,
+} from "@/lib/paystack";
 import type { ApiResponse } from "@/types";
 
 export async function getPayoutAccount(): Promise<{
   accountName: string | null;
   accountNumber: string | null;
   bankName: string | null;
-  subaccountCode: string | null;
+  bankType: string | null;
+  recipientCode: string | null;
 }> {
   const session = await auth();
-  if (!session?.user) return { accountName: null, accountNumber: null, bankName: null, subaccountCode: null };
+  if (!session?.user) {
+    return { accountName: null, accountNumber: null, bankName: null, bankType: null, recipientCode: null };
+  }
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
@@ -20,15 +28,23 @@ export async function getPayoutAccount(): Promise<{
       paystackAccountName: true,
       paystackAccountNumber: true,
       paystackBankName: true,
-      paystackSubaccountCode: true,
+      paystackBankCode: true,
+      paystackRecipientCode: true,
     },
   });
+
+  // Derive bankType from stored bankCode by checking the known mobile money codes
+  const mobileMoneyCodes = new Set(["MPESA", "ATL_KE", "97", "MPPAYBILL", "MPTILL"]);
+  const bankType = user?.paystackBankCode
+    ? mobileMoneyCodes.has(user.paystackBankCode) ? "mobile_money" : "kepss"
+    : null;
 
   return {
     accountName: user?.paystackAccountName ?? null,
     accountNumber: user?.paystackAccountNumber ?? null,
     bankName: user?.paystackBankName ?? null,
-    subaccountCode: user?.paystackSubaccountCode ?? null,
+    bankType,
+    recipientCode: user?.paystackRecipientCode ?? null,
   };
 }
 
@@ -51,7 +67,7 @@ export async function verifyAccountNumber(
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in." };
 
-  if (!/^\d{10,16}$/.test(accountNumber.trim())) {
+  if (!/^\d{6,20}$/.test(accountNumber.trim())) {
     return { ok: false, error: "Enter a valid account number." };
   }
 
@@ -63,12 +79,31 @@ export async function verifyAccountNumber(
   }
 }
 
+export async function deletePayoutAccount(): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Please sign in." };
+
+  await db.user.update({
+    where: { id: session.user.id },
+    data: {
+      paystackRecipientCode: null,
+      paystackBankCode: null,
+      paystackBankName: null,
+      paystackAccountNumber: null,
+      paystackAccountName: null,
+    },
+  });
+
+  return { ok: true, data: null };
+}
+
 export async function savePayoutAccount(input: {
   bankCode: string;
   bankName: string;
+  bankType: string;
   accountNumber: string;
   accountName: string;
-}): Promise<ApiResponse<{ subaccountCode: string }>> {
+}): Promise<ApiResponse<{ recipientCode: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in." };
 
@@ -78,25 +113,31 @@ export async function savePayoutAccount(input: {
   });
   if (!user) return { ok: false, error: "User not found." };
 
+  // For paybill/till, accountName holds the account ref — use seller's profile name for Paystack
+  const recipientName = input.bankType === "mobile_money_business"
+    ? (user.name || user.email)
+    : (input.accountName || user.name || user.email);
+
   try {
-    const { subaccountCode } = await createSubaccount({
-      businessName: user.name ?? user.email,
-      bankCode: input.bankCode,
+    const { recipientCode } = await createTransferRecipient({
+      type: input.bankType,
+      name: recipientName,
       accountNumber: input.accountNumber,
+      bankCode: input.bankCode,
     });
 
     await db.user.update({
       where: { id: session.user.id },
       data: {
-        paystackSubaccountCode: subaccountCode,
+        paystackRecipientCode: recipientCode,
         paystackBankCode: input.bankCode,
         paystackBankName: input.bankName,
         paystackAccountNumber: input.accountNumber,
-        paystackAccountName: input.accountName,
+        paystackAccountName: recipientName,
       },
     });
 
-    return { ok: true, data: { subaccountCode } };
+    return { ok: true, data: { recipientCode } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Failed to set up payout account." };
   }
