@@ -35,7 +35,7 @@ interface Props {
   grandDefaultRate: number;
   grandNearingRevocation: number;
   grandRevoked: number;
-  resaleActive: number;
+  // RESALE: resaleActive: number;
 }
 
 const TEAL  = "#0f9699";
@@ -43,7 +43,7 @@ const TEAL2 = "#5de4e6";
 const GRAY  = "#e5e7eb";
 const AMBER = "#f59e0b";
 const RED   = "#ef4444";
-const INDIGO = "#6366f1";
+// RESALE: const INDIGO = "#6366f1";
 
 function shorten(s: string, max = 13) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
@@ -65,7 +65,7 @@ export function AnalyticsCharts({
   grandDefaultRate,
   grandNearingRevocation,
   grandRevoked,
-  resaleActive,
+  // RESALE: resaleActive,
 }: Props) {
   const collectionPct = grandRevenue > 0 ? Math.round((grandCollected / grandRevenue) * 100) : 0;
 
@@ -256,12 +256,13 @@ export function AnalyticsCharts({
             <p className="mt-0.5 text-xs text-gray-400">non-payment revocations</p>
           </div>
 
-          {/* Resale market */}
+          {/* RESALE:
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">In resale market</p>
             <p className="mt-2 text-2xl font-black text-indigo-500">{resaleActive}</p>
             <p className="mt-0.5 text-xs text-gray-400">active listings</p>
           </div>
+          */}
         </div>
       </div>
 

@@ -53,7 +53,7 @@ export async function getAdminEvent(eventId: string) {
 export async function getSellerBalances() {
   if (!(await requireAdmin())) return [];
 
-  // All fully-paid orders with their event's fee rate
+  // All fully-paid orders with their event's fee rate and payout method
   const orders = await db.order.findMany({
     where: { status: "PAID_IN_FULL" },
     select: {
@@ -62,18 +62,25 @@ export async function getSellerBalances() {
         select: {
           event: {
             select: {
+              id: true,
+              title: true,
+              date: true,
               sellerId: true,
               platformFeePercent: true,
-              seller: {
+              payoutMethodId: true,
+              payoutMethod: {
                 select: {
                   id: true,
-                  name: true,
-                  email: true,
-                  paystackRecipientCode: true,
+                  label: true,
                   paystackBankName: true,
-                  paystackAccountNumber: true,
                   paystackBankCode: true,
+                  paystackAccountNumber: true,
+                  paystackRecipientCode: true,
+                  bankType: true,
                 },
+              },
+              seller: {
+                select: { id: true, name: true, email: true },
               },
             },
           },
@@ -82,89 +89,204 @@ export async function getSellerBalances() {
     },
   });
 
-  // Aggregate earnings per seller
+  // Group earnings by (sellerId, payoutMethodId)
   const earnings: Record<string, number> = {};
-  const sellers: Record<string, {
-    id: string;
-    name: string | null;
-    email: string;
-    recipientCode: string | null;
-    bankName: string | null;
-    accountNumber: string | null;
-    bankCode: string | null;
+  const gross: Record<string, number> = {};
+  const rows: Record<string, {
+    seller: { id: string; name: string | null; email: string };
+    payoutMethod: {
+      id: string;
+      label: string | null;
+      bankName: string;
+      bankCode: string;
+      accountNumber: string;
+      recipientCode: string;
+      bankType: string;
+    } | null;
   }> = {};
+  const eventBreakdowns: Record<string, Record<string, {
+    eventId: string;
+    title: string;
+    date: Date;
+    feePercent: number;
+    grossAmount: number;
+    sellerNet: number;
+  }>> = {};
 
   for (const order of orders) {
     const event = order.ticketCategory.event;
-    const seller = event.seller;
     const feePercent = Number(event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
-    const sellerShare = Number(order.totalAmount) * (1 - feePercent / 100);
+    const orderGross = Number(order.totalAmount);
+    const sellerShare = orderGross * (1 - feePercent / 100);
+    const key = `${event.sellerId}:${event.payoutMethodId ?? "none"}`;
 
-    earnings[seller.id] = (earnings[seller.id] ?? 0) + sellerShare;
-    sellers[seller.id] = {
-      id: seller.id,
-      name: seller.name,
-      email: seller.email,
-      recipientCode: seller.paystackRecipientCode,
-      bankName: seller.paystackBankName,
-      accountNumber: seller.paystackAccountNumber,
-      bankCode: seller.paystackBankCode,
+    earnings[key] = (earnings[key] ?? 0) + sellerShare;
+    gross[key] = (gross[key] ?? 0) + orderGross;
+    rows[key] = {
+      seller: { id: event.seller.id, name: event.seller.name, email: event.seller.email },
+      payoutMethod: event.payoutMethod
+        ? {
+            id: event.payoutMethod.id,
+            label: event.payoutMethod.label,
+            bankName: event.payoutMethod.paystackBankName,
+            bankCode: event.payoutMethod.paystackBankCode,
+            accountNumber: event.payoutMethod.paystackAccountNumber,
+            recipientCode: event.payoutMethod.paystackRecipientCode,
+            bankType: event.payoutMethod.bankType,
+          }
+        : null,
     };
+
+    if (!eventBreakdowns[key]) eventBreakdowns[key] = {};
+    const evMap = eventBreakdowns[key];
+    if (!evMap[event.id]) {
+      evMap[event.id] = { eventId: event.id, title: event.title, date: event.date, feePercent, grossAmount: 0, sellerNet: 0 };
+    }
+    evMap[event.id].grossAmount += orderGross;
+    evMap[event.id].sellerNet += sellerShare;
   }
 
-  // Successful payouts already sent
+  // Successful payouts grouped by (sellerId, payoutMethodId)
   const payouts = await db.payout.findMany({
     where: { status: "success" },
-    select: { sellerId: true, amount: true },
+    select: { sellerId: true, payoutMethodId: true, amount: true },
   });
   const paidOut: Record<string, number> = {};
   for (const p of payouts) {
-    paidOut[p.sellerId] = (paidOut[p.sellerId] ?? 0) + Number(p.amount);
+    const key = `${p.sellerId}:${p.payoutMethodId ?? "none"}`;
+    paidOut[key] = (paidOut[key] ?? 0) + Number(p.amount);
   }
 
   return Object.entries(earnings)
-    .map(([sellerId, earned]) => ({
-      seller: sellers[sellerId],
-      earned: Math.round(earned * 100) / 100,
-      paidOut: Math.round((paidOut[sellerId] ?? 0) * 100) / 100,
-      outstanding: Math.round((earned - (paidOut[sellerId] ?? 0)) * 100) / 100,
-    }))
-    .filter((b) => b.outstanding > 0.5) // ignore dust amounts
+    .map(([key, earned]) => {
+      const grossRevenue = Math.round((gross[key] ?? 0) * 100) / 100;
+      const events = Object.values(eventBreakdowns[key] ?? {})
+        .map((e) => ({
+          ...e,
+          grossAmount: Math.round(e.grossAmount * 100) / 100,
+          sellerNet: Math.round(e.sellerNet * 100) / 100,
+        }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return {
+        key,
+        seller: rows[key].seller,
+        payoutMethod: rows[key].payoutMethod,
+        grossRevenue,
+        platformFee: Math.round((grossRevenue - earned) * 100) / 100,
+        earned: Math.round(earned * 100) / 100,
+        paidOut: Math.round((paidOut[key] ?? 0) * 100) / 100,
+        outstanding: Math.round((earned - (paidOut[key] ?? 0)) * 100) / 100,
+        events,
+      };
+    })
+    .filter((b) => b.outstanding > 0.5)
     .sort((a, b) => b.outstanding - a.outstanding);
 }
 
+// ─── User management ─────────────────────────────────────────────────────────
+
+export async function adminGetUser(userId: string) {
+  if (!(await requireAdmin())) return null;
+
+  return db.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+      _count: { select: { orders: true, events: true } },
+    },
+  });
+}
+
+export async function adminGetUserOrders(userId: string) {
+  if (!(await requireAdmin())) return [];
+
+  return db.order.findMany({
+    where: { buyerId: userId },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      totalAmount: true,
+      status: true,
+      createdAt: true,
+      ticketCategory: {
+        select: { name: true, event: { select: { title: true } } },
+      },
+    },
+  });
+}
+
+export async function adminUpdateUserRole(
+  userId: string,
+  role: "BUYER" | "SELLER" | "ADMIN"
+): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  await db.user.update({ where: { id: userId }, data: { role } });
+  return { ok: true, data: null };
+}
+
+// ─── Order management ─────────────────────────────────────────────────────────
+
+export async function adminCancelOrder(orderId: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: { status: true },
+  });
+  if (!order) return { ok: false, error: "Order not found." };
+  if (order.status === "CANCELLED") return { ok: false, error: "Order already cancelled." };
+  if (order.status === "PAID_IN_FULL") return { ok: false, error: "Cannot cancel a fully paid order." };
+
+  await db.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });
+  return { ok: true, data: null };
+}
+
+// ─── Payout management ────────────────────────────────────────────────────────
+
 export async function triggerSellerPayout(
   sellerId: string,
+  payoutMethodId: string,
   amount: number
 ): Promise<ApiResponse<{ payoutId: string }>> {
   if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
 
   if (amount <= 0) return { ok: false, error: "Amount must be greater than zero." };
 
+  const method = await db.payoutMethod.findFirst({
+    where: { id: payoutMethodId, sellerId },
+    select: { paystackRecipientCode: true },
+  });
+  if (!method) return { ok: false, error: "Payout method not found." };
+
   const seller = await db.user.findUnique({
     where: { id: sellerId },
-    select: { paystackRecipientCode: true, name: true, email: true },
+    select: { name: true, email: true },
   });
-  if (!seller?.paystackRecipientCode) {
-    return { ok: false, error: "Seller has not set up a payout account." };
-  }
+  if (!seller) return { ok: false, error: "Seller not found." };
 
   const reference = generateReference("PAY");
 
   const payout = await db.payout.create({
     data: {
       sellerId,
+      payoutMethodId,
       amount,
       reference,
       status: "pending",
-      reason: `Lumora ticket sales payout`,
+      reason: "Lumora ticket sales payout",
     },
   });
 
   try {
     const transfer = await initiateTransfer({
       amount: toKobo(amount),
-      recipient: seller.paystackRecipientCode,
+      recipient: method.paystackRecipientCode,
       reference,
       reason: `Lumora payout — ${seller.name ?? seller.email}`,
     });

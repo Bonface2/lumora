@@ -1,11 +1,30 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import Link from "next/link";
 import { AnalyticsCharts } from "./AnalyticsCharts";
+import { PLATFORM_FEE_PERCENT } from "@/lib/paystack";
 
-export default async function AnalyticsPage() {
+function isOverdue(
+  order: { status: string; payments: { paymentNumber: number; dueDate: Date; status: string }[] },
+  now: Date
+) {
+  if (order.status === "DEFAULTED" || order.status === "REVOKED") return true;
+  if (order.status !== "PARTIAL_PAID") return false;
+  return order.payments.some(
+    (p) => p.paymentNumber > 0 && p.dueDate < now && (p.status === "PENDING" || p.status === "OVERDUE" || p.status === "DEFAULTED")
+  );
+}
+
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ event?: string }>;
+}) {
   const session = await auth();
+  const { event: selectedEventId } = await searchParams;
+  const now = new Date();
 
-  const events = await db.event.findMany({
+  const allEvents = await db.event.findMany({
     where: { sellerId: session!.user.id },
     include: {
       ticketCategories: {
@@ -18,6 +37,11 @@ export default async function AnalyticsPage() {
     },
     orderBy: { date: "asc" },
   });
+
+  // Filter to selected event if specified, otherwise use all
+  const events = selectedEventId
+    ? allEvents.filter((e) => e.id === selectedEventId)
+    : allEvents;
 
   let grandRevenue = 0;
   let grandCollected = 0;
@@ -66,12 +90,12 @@ export default async function AnalyticsPage() {
         if (order.status === "PENDING" || order.status === "CANCELLED") continue;
         catTotalOrders++;
         catCollected += Number(order.paidAmount);
-        if (order.status === "DEFAULTED") catDefaulted++;
-        if (order.status === "REVOKED") { catDefaulted++; catRevoked++; }
+        if (isOverdue(order, now)) catDefaulted++;
+        if (order.status === "REVOKED") catRevoked++;
       }
 
       evCollected += catCollected;
-      grandNearingRevocation += cat.orders.filter((o) => o.status === "DEFAULTED").length;
+      grandNearingRevocation += cat.orders.filter((o) => isOverdue(o, now) && o.status !== "REVOKED").length;
       grandRevoked += catRevoked;
       grandTotalOrders += catTotalOrders;
 
@@ -106,6 +130,40 @@ export default async function AnalyticsPage() {
   const grandDefaultRate =
     grandTotalOrders > 0 ? Math.round((grandDefaulted / grandTotalOrders) * 100) : 0;
 
+  // Disbursement metrics — always computed across all events (payouts are per-seller, not per-event)
+  let sellerNetEarned = 0;
+  let grossCollected = 0;
+  for (const event of allEvents) {
+    const feePercent = Number(event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
+    for (const cat of event.ticketCategories) {
+      for (const order of cat.orders) {
+        if (order.status === "PENDING" || order.status === "CANCELLED") continue;
+        const paid = Number(order.paidAmount);
+        grossCollected += paid;
+        sellerNetEarned += paid * (1 - feePercent / 100);
+      }
+    }
+  }
+  sellerNetEarned = Math.round(sellerNetEarned * 100) / 100;
+  grossCollected = Math.round(grossCollected * 100) / 100;
+  const platformFeeTotal = Math.round((grossCollected - sellerNetEarned) * 100) / 100;
+
+  const payouts = await db.payout.findMany({
+    where: { sellerId: session!.user.id },
+    include: {
+      payoutMethod: {
+        select: { paystackBankName: true, bankType: true, paystackAccountNumber: true, label: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const MOBILE_TYPES = new Set(["mobile_money", "mobile_money_business"]);
+  const totalDisbursed = Math.round(payouts.filter((p) => p.status === "success").reduce((s, p) => s + Number(p.amount), 0) * 100) / 100;
+  const pendingDisbursement = Math.round(payouts.filter((p) => p.status === "pending").reduce((s, p) => s + Number(p.amount), 0) * 100) / 100;
+  const outstandingBalance = Math.max(0, Math.round((sellerNetEarned - totalDisbursed - pendingDisbursement) * 100) / 100);
+
+  /* RESALE:
   const sellerEventIds = events.map((e) => e.id);
   const resaleActive =
     sellerEventIds.length === 0
@@ -120,6 +178,15 @@ export default async function AnalyticsPage() {
             },
           },
         });
+  */
+
+  const exportBase = selectedEventId
+    ? `/api/seller/export?event=${selectedEventId}&`
+    : "/api/seller/export?";
+
+  const selectedEvent = selectedEventId
+    ? allEvents.find((e) => e.id === selectedEventId)
+    : null;
 
   return (
     <div className="min-h-full bg-gray-50 font-sans">
@@ -140,12 +207,16 @@ export default async function AnalyticsPage() {
               Seller dashboard
             </p>
             <h1 className="text-3xl font-black tracking-tight text-white">Analytics</h1>
-            <p className="mt-1 text-sm text-gray-400">Revenue and sales across all your events.</p>
+            <p className="mt-1 text-sm text-gray-400">
+              {selectedEvent
+                ? `Showing data for: ${selectedEvent.title}`
+                : "Revenue and sales across all your events."}
+            </p>
           </div>
 
-          {events.length > 0 && (
+          {allEvents.length > 0 && (
             <div className="flex items-center gap-2">
-              <a href="/api/seller/export?format=csv" download>
+              <a href={`${exportBase}format=csv`} download>
                 <button className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-white/10 transition-colors">
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -153,7 +224,7 @@ export default async function AnalyticsPage() {
                   CSV
                 </button>
               </a>
-              <a href="/api/seller/export?format=xlsx" download>
+              <a href={`${exportBase}format=xlsx`} download>
                 <button className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-white/10 transition-colors">
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -164,11 +235,40 @@ export default async function AnalyticsPage() {
             </div>
           )}
         </div>
+
+        {/* ── Event filter pills ── */}
+        {allEvents.length > 1 && (
+          <div className="relative mt-5 flex flex-wrap gap-2">
+            <Link
+              href="/seller/analytics"
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                !selectedEventId
+                  ? "bg-primary-500 text-white"
+                  : "bg-white/10 text-gray-300 hover:bg-white/20"
+              }`}
+            >
+              All events
+            </Link>
+            {allEvents.map((e) => (
+              <Link
+                key={e.id}
+                href={`/seller/analytics?event=${e.id}`}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors truncate max-w-[200px] ${
+                  selectedEventId === e.id
+                    ? "bg-primary-500 text-white"
+                    : "bg-white/10 text-gray-300 hover:bg-white/20"
+                }`}
+              >
+                {e.title}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Charts ── */}
       <div className="p-8">
-        {events.length === 0 ? (
+        {allEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50">
               <svg className="h-8 w-8 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -183,6 +283,11 @@ export default async function AnalyticsPage() {
               </button>
             </a>
           </div>
+        ) : events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
+            <p className="text-lg font-bold text-gray-900">No data for this event</p>
+            <p className="mt-1 text-sm text-gray-500">No orders have been placed for this event yet.</p>
+          </div>
         ) : (
           <AnalyticsCharts
             eventStats={eventStats}
@@ -194,10 +299,91 @@ export default async function AnalyticsPage() {
             grandDefaultRate={grandDefaultRate}
             grandNearingRevocation={grandNearingRevocation}
             grandRevoked={grandRevoked}
-            resaleActive={resaleActive}
           />
         )}
       </div>
+
+      {/* ── Disbursements ── */}
+      {sellerNetEarned > 0 && (
+        <div className="px-8 pb-12">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">Disbursements</h2>
+          <p className="mb-4 text-xs text-gray-400">Across all your events, after platform fee.</p>
+
+          {/* KPI cards */}
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: "Gross collected", value: `KES ${grossCollected.toLocaleString()}`, sub: "total payments received", color: "text-gray-900" },
+              { label: "Platform fee", value: `KES ${platformFeeTotal.toLocaleString()}`, sub: "deducted by Lumora", color: "text-primary-600" },
+              { label: "Net earned", value: `KES ${sellerNetEarned.toLocaleString()}`, sub: "after platform fee", color: "text-gray-900" },
+              { label: "Awaiting payout", value: `KES ${outstandingBalance.toLocaleString()}`, sub: pendingDisbursement > 0 ? `+ KES ${pendingDisbursement.toLocaleString()} pending` : totalDisbursed > 0 ? `KES ${totalDisbursed.toLocaleString()} disbursed` : "not yet disbursed", color: outstandingBalance > 0 ? "text-amber-500" : "text-emerald-600" },
+            ].map((s) => (
+              <div key={s.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{s.label}</p>
+                <p className={`mt-2 text-2xl font-black ${s.color}`}>{s.value}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{s.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Transactions table */}
+          {payouts.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center">
+              <p className="text-sm font-semibold text-gray-500">No disbursements yet.</p>
+              <p className="mt-1 text-xs text-gray-400">Payments will appear here once Lumora processes your first payout.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                    <th className="px-5 py-3 text-xs font-semibold text-gray-500">Date</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-gray-500">Account</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 text-right">Amount</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-gray-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {payouts.map((p) => {
+                    const isMobile = p.payoutMethod ? MOBILE_TYPES.has(p.payoutMethod.bankType) : false;
+                    const accountStr = p.payoutMethod
+                      ? `${p.payoutMethod.paystackBankName}${p.payoutMethod.label ? ` · ${p.payoutMethod.label}` : ""} — ${isMobile ? p.payoutMethod.paystackAccountNumber : `****${p.payoutMethod.paystackAccountNumber.slice(-4)}`}`
+                      : "—";
+                    return (
+                      <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+                          {p.createdAt.toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-600 max-w-[220px] truncate">{accountStr}</td>
+                        <td className="px-5 py-3.5 text-right font-semibold text-gray-900 whitespace-nowrap">
+                          KES {Number(p.amount).toLocaleString()}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {p.status === "success" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Paid
+                            </span>
+                          ) : p.status === "pending" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                              Failed
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

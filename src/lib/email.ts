@@ -96,7 +96,6 @@ function shell({
             <p style="margin:0 0 10px;font-size:12px;color:#94a3b8;text-align:center;">${footerNote}</p>
             ` : ""}
             <p style="margin:0;font-size:11px;color:#475569;text-align:center;">
-              Tickets are non-transferable except through the Lumora resale market.
               All payments are non-refundable.
             </p>
             <p style="margin:8px 0 0;font-size:11px;color:#334155;text-align:center;">

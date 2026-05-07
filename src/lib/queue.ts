@@ -3,7 +3,7 @@ import IORedis from "ioredis";
 
 // ─── System-wide constants ────────────────────────────────────────────────────
 
-export const RESALE_REVOKE_DAYS_BEFORE_EVENT = 3;
+// RESALE: export const RESALE_REVOKE_DAYS_BEFORE_EVENT = 3;
 
 // ─── Queue Names ──────────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ export const QUEUES = {
   INSTALLMENT_REMINDER: "installment-reminder",
   DEFAULT_WARNING: "default-warning",
   TICKET_REVOCATION: "ticket-revocation",
-  RESALE_EXPIRY: "resale-expiry",
+  // RESALE: RESALE_EXPIRY: "resale-expiry",
 } as const;
 
 // ─── Job Payload Types ────────────────────────────────────────────────────────
@@ -33,9 +33,7 @@ export interface TicketRevocationJob {
   installmentPaymentId: string;
 }
 
-export interface ResaleExpiryJob {
-  resaleListingId: string;
-}
+// RESALE: export interface ResaleExpiryJob { resaleListingId: string; }
 
 // ─── Lazy singletons ──────────────────────────────────────────────────────────
 
@@ -43,7 +41,7 @@ let _connection: IORedis | null = null;
 let _installmentReminderQueue: Queue | null = null;
 let _defaultWarningQueue: Queue | null = null;
 let _ticketRevocationQueue: Queue | null = null;
-let _resaleExpiryQueue: Queue | null = null;
+// RESALE: let _resaleExpiryQueue: Queue | null = null;
 
 function getConnection(): IORedis {
   if (!_connection) {
@@ -82,6 +80,7 @@ function getTicketRevocationQueue(): Queue {
   return _ticketRevocationQueue;
 }
 
+/* RESALE:
 function getResaleExpiryQueue(): Queue {
   if (!_resaleExpiryQueue) {
     _resaleExpiryQueue = new Queue(QUEUES.RESALE_EXPIRY, {
@@ -90,6 +89,7 @@ function getResaleExpiryQueue(): Queue {
   }
   return _resaleExpiryQueue;
 }
+*/
 
 // ─── Schedule Helpers ─────────────────────────────────────────────────────────
 
@@ -159,6 +159,7 @@ export async function scheduleTicketRevocation(
   );
 }
 
+/* RESALE:
 export async function scheduleResaleExpiry(
   resaleListingId: string,
   expiresAt: Date
@@ -172,6 +173,7 @@ export async function scheduleResaleExpiry(
     { delay, jobId: `resale-expiry-${resaleListingId}`, removeOnComplete: true }
   );
 }
+*/
 
 export async function cancelInstallmentJobs(
   installmentPaymentIds: string[]
@@ -203,6 +205,7 @@ export async function cancelInstallmentJobs(
 
 // ─── Expiry Date Helpers ──────────────────────────────────────────────────────
 
+/* RESALE:
 export function computeResaleExpiry(
   isFullyPaid: boolean,
   eventDate: Date,
@@ -216,5 +219,6 @@ export function computeResaleExpiry(
   expiry.setDate(expiry.getDate() - RESALE_REVOKE_DAYS_BEFORE_EVENT);
   return expiry;
 }
+*/
 
 export { getConnection as connection };

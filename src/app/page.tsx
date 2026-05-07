@@ -8,7 +8,7 @@ export default async function HomePage() {
   const session = await auth();
 
   if (session?.user) {
-    redirect(session.user.role === "SELLER" ? "/seller" : "/buyer");
+    redirect(session.user.role === "SELLER" ? "/seller" : session.user.role === "ADMIN" ? "/admin" : "/buyer");
   }
 
   const events = await db.event.findMany({
@@ -36,10 +36,10 @@ export default async function HomePage() {
         {/* Center links */}
         <div className="hidden items-center gap-6 md:flex">
           <Link href="/events" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            Browse events
+            Explore
           </Link>
           <Link href="/register?role=seller" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            Sell tickets
+            List an experience
           </Link>
         </div>
 
@@ -53,7 +53,7 @@ export default async function HomePage() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-gray-950 px-6 py-24 md:py-36 lg:py-44">
+      <section className="relative overflow-hidden bg-gray-950 px-6 py-20 md:py-28 lg:py-32">
         {/* Dot texture */}
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.06]"
@@ -67,29 +67,28 @@ export default async function HomePage() {
 
         <div className="relative mx-auto max-w-4xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-primary-700/40 bg-primary-900/40 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary-300 mb-8">
-            Tickets · Installments · Resale
+            Experiences · Tickets · Installments
           </span>
           <h1 className="text-5xl font-black leading-[1.08] tracking-tight text-white sm:text-6xl lg:text-7xl">
-            Every great event,{" "}
-            <span className="text-primary-300">one platform.</span>
+            Every experience{" "}
+            <span className="text-primary-300">worth having.</span>
           </h1>
           <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-gray-400">
-            Buy tickets in full or spread the cost with installments. Can&apos;t
-            make it? List your ticket on the resale market. Secure payments via
-            Paystack.
+            Concerts, tours, group trips, retreats — buy tickets in full or
+            spread the cost with installments. Secure payments via Paystack.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
               href="/events"
               className="rounded-xl bg-primary-500 px-8 py-3.5 text-sm font-bold tracking-wide text-white shadow-lg shadow-primary-900/40 hover:bg-primary-400 transition-colors"
             >
-              Browse events
+              Explore experiences
             </Link>
             <Link
               href="/register?role=seller"
               className="rounded-xl border border-white/20 bg-white/5 px-8 py-3.5 text-sm font-bold tracking-wide text-white backdrop-blur-sm hover:bg-white/10 transition-colors"
             >
-              Start selling ↗
+              List yours ↗
             </Link>
           </div>
         </div>
@@ -99,8 +98,8 @@ export default async function HomePage() {
       <section className="border-b border-gray-100 bg-primary-50">
         <div className="mx-auto grid max-w-5xl grid-cols-1 divide-y divide-gray-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {[
-            { icon: "💳", label: "Pay in installments", body: "Deposit now, spread the rest. Auto-reminders keep everyone on track." },
-            { icon: "🔄", label: "Resale market", body: "Transfer your ticket. Buyers inherit remaining installments seamlessly." },
+            { icon: "💳", label: "Pay in installments", body: "Deposit now, spread the rest over time. Works for any experience — concerts to multi-day tours." },
+            { icon: "🗺️", label: "Events, tours & more", body: "Concerts, group trips, retreats, day tours — one platform for any shared experience." },
             { icon: "🔒", label: "Paystack secure", body: "Fast, trusted card payments — no third-party sign-up required." },
           ].map((f) => (
             <div key={f.label} className="flex items-start gap-4 px-8 py-8">
@@ -118,8 +117,8 @@ export default async function HomePage() {
       <section className="mx-auto max-w-6xl px-6 py-16 md:px-10">
         <div className="mb-10 flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-black tracking-tight text-gray-900">Upcoming events</h2>
-            <p className="mt-1 text-sm text-gray-500">Hand-picked events on Lumora</p>
+            <h2 className="text-2xl font-black tracking-tight text-gray-900">Upcoming experiences</h2>
+            <p className="mt-1 text-sm text-gray-500">Curated experiences on Lumora</p>
           </div>
           <Link href="/events" className="text-sm font-semibold text-primary-600 hover:text-primary-700">
             View all →
@@ -128,10 +127,10 @@ export default async function HomePage() {
 
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
-            <p className="text-lg font-bold text-gray-900">No events yet</p>
-            <p className="mt-1 text-sm text-gray-500">Be the first to host one.</p>
+            <p className="text-lg font-bold text-gray-900">Nothing listed yet</p>
+            <p className="mt-1 text-sm text-gray-500">Be the first to list an experience.</p>
             <Link href="/register?role=seller" className="mt-4 text-sm font-semibold text-primary-600 hover:underline">
-              Create an event →
+              List yours →
             </Link>
           </div>
         ) : (
@@ -225,14 +224,14 @@ export default async function HomePage() {
       {/* ── Seller CTA ── */}
       <section className="bg-gray-950 px-6 py-20 text-center">
         <p className="text-xs font-bold uppercase tracking-widest text-primary-400 mb-4">
-          For organisers
+          For hosts &amp; organisers
         </p>
         <h2 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
-          Host your next event on Lumora
+          Run your next experience on Lumora
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-base text-gray-400">
-          Create events, set up ticket categories, configure installment plans,
-          and get paid — all in one place.
+          Events, tours, group trips, retreats — set up tickets, configure
+          installments, and get paid. All in one place.
         </p>
         <Link
           href="/register?role=seller"

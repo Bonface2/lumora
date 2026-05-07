@@ -61,7 +61,7 @@ export default async function PublicEventPage({
 
         <div className="flex items-center gap-3">
           <Link href="/events" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
-            ← All events
+            ← Explore
           </Link>
           {session?.user ? (
             <NavUserSidebar user={session.user} dashboardHref={dashboardHref} />
@@ -125,7 +125,7 @@ export default async function PublicEventPage({
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                Organised by {event.seller.name}
+                Hosted by {event.seller.name}
               </span>
             </div>
           </div>
@@ -152,7 +152,7 @@ export default async function PublicEventPage({
 
             {/* About */}
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-black tracking-tight text-gray-900">About this event</h2>
+              <h2 className="mb-4 text-lg font-black tracking-tight text-gray-900">About this experience</h2>
               <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">
                 {event.description}
               </p>
@@ -160,7 +160,7 @@ export default async function PublicEventPage({
 
             {/* Event details card */}
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-black tracking-tight text-gray-900">Event details</h2>
+              <h2 className="mb-4 text-lg font-black tracking-tight text-gray-900">Details</h2>
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50">
@@ -199,7 +199,7 @@ export default async function PublicEventPage({
                     </svg>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Organiser</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Host</p>
                     <p className="mt-0.5 text-sm font-semibold text-gray-900">{event.seller.name}</p>
                   </div>
                 </div>

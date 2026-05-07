@@ -63,18 +63,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    async jwt({ token, user, account }) {
-      if (user) {
+    async jwt({ token, user }) {
+      if (user?.id) {
         token.id = user.id;
-        token.role = (user as { role?: string }).role;
-      }
-      // Re-fetch role for OAuth sign-ins so the createUser event's DB update is reflected
-      if (account && user?.id) {
+        // Always fetch the authoritative role from DB on sign-in so that
+        // manual role changes (e.g. promoting to ADMIN) take effect immediately.
         const dbUser = await db.user.findUnique({
           where: { id: user.id as string },
           select: { role: true },
         });
-        if (dbUser) token.role = dbUser.role;
+        token.role = dbUser?.role;
       }
       return token;
     },

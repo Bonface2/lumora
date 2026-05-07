@@ -53,6 +53,14 @@ export async function createEvent(
 
   const slug = await uniqueSlug(slugify(data.title));
 
+  // Verify payout method belongs to this seller
+  const payoutMethod = await db.payoutMethod.findFirst({
+    where: { id: data.payoutMethodId, sellerId: session.user.id },
+  });
+  if (!payoutMethod) {
+    return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+  }
+
   const event = await db.event.create({
     data: {
       sellerId: session.user.id,
@@ -64,6 +72,7 @@ export async function createEvent(
       venue: data.venue,
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
+      payoutMethodId: data.payoutMethodId,
       status: "DRAFT",
       ticketCategories: {
         create: data.ticketCategories.map((cat: CreateEventFormData["ticketCategories"][number], i: number) => ({
@@ -161,6 +170,30 @@ export async function updateEvent(
     }
   }
 
+  // Lock payout method if any payments have been received
+  if (data.payoutMethodId !== existingEvent.payoutMethodId) {
+    const hasPaidOrders = await db.order.count({
+      where: {
+        ticketCategory: { eventId },
+        status: { notIn: ["PENDING", "CANCELLED"] },
+      },
+    });
+    if (hasPaidOrders > 0) {
+      return {
+        ok: false,
+        error: "Payout method cannot be changed once payments have been received for this event.",
+      };
+    }
+  }
+
+  // Verify payout method belongs to this seller
+  const payoutMethod = await db.payoutMethod.findFirst({
+    where: { id: data.payoutMethodId, sellerId: session.user.id },
+  });
+  if (!payoutMethod) {
+    return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+  }
+
   // Update basic event fields
   await db.event.update({
     where: { id: eventId },
@@ -172,6 +205,7 @@ export async function updateEvent(
       venue: data.venue,
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
+      payoutMethodId: data.payoutMethodId,
     },
   });
 

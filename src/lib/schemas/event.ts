@@ -33,6 +33,7 @@ const eventBaseSchema = z.object({
   venue: z.string().min(2, "Venue is required"),
   city: z.string().optional(),
   coverImage: z.string().optional(),
+  payoutMethodId: z.string().min(1, "Select a payout method"),
   ticketCategories: z
     .array(ticketCategorySchema)
     .min(1, "Add at least one ticket category"),

@@ -13,7 +13,7 @@ export default auth((req) => {
   const role = session?.user?.role;
 
   if (AUTH_PATHS.some((p) => pathname.startsWith(p)) && isAuthenticated) {
-    const dest = role === "SELLER" ? "/seller" : "/buyer";
+    const dest = role === "SELLER" ? "/seller" : role === "ADMIN" ? "/admin" : "/buyer";
     return NextResponse.redirect(new URL(dest, req.url));
   }
 

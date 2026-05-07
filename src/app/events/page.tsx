@@ -31,10 +31,10 @@ export default async function EventsPage() {
 
         <div className="hidden items-center gap-6 md:flex">
           <Link href="/events" className="text-sm font-semibold text-primary-600">
-            Browse events
+            Explore
           </Link>
           <Link href="/register?role=seller" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            Sell tickets
+            List an experience
           </Link>
         </div>
 
@@ -65,7 +65,7 @@ export default async function EventsPage() {
 
         <div className="relative mx-auto max-w-6xl">
           <h1 className="text-4xl font-black tracking-tight text-white sm:text-5xl">
-            Upcoming events
+            Upcoming experiences
           </h1>
           <p className="mt-3 text-base text-gray-400">
             Find your next experience — pay in full or spread the cost with installments.
@@ -77,7 +77,7 @@ export default async function EventsPage() {
       <div className="mx-auto max-w-6xl px-6 py-10 md:px-10">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
-            <p className="text-lg font-bold text-gray-900">No events yet</p>
+            <p className="text-lg font-bold text-gray-900">Nothing listed yet</p>
             <p className="mt-1 text-sm text-gray-500">Check back soon.</p>
           </div>
         ) : (

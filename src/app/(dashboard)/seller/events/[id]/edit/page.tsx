@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getPayoutMethods } from "@/app/actions/payout";
 import { CreateEventForm } from "@/app/(dashboard)/seller/events/new/CreateEventForm";
 import type { CreateEventFormData } from "@/lib/schemas/event";
 
@@ -13,15 +14,25 @@ export default async function EditEventPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const event = await db.event.findFirst({
-    where: { id, sellerId: session.user.id },
-    include: {
-      ticketCategories: {
-        include: { installmentPlan: { include: { scheduleItems: true } } },
-        orderBy: { sortOrder: "asc" },
+  const [event, payoutMethods, paidOrderCount] = await Promise.all([
+    db.event.findFirst({
+      where: { id, sellerId: session.user.id },
+      include: {
+        ticketCategories: {
+          include: { installmentPlan: { include: { scheduleItems: true } } },
+          orderBy: { sortOrder: "asc" },
+        },
       },
-    },
-  });
+    }),
+    getPayoutMethods(),
+    db.order.count({
+      where: {
+        ticketCategory: { eventId: id },
+        status: { notIn: ["PENDING", "CANCELLED"] },
+      },
+    }),
+  ]);
+
   if (!event) notFound();
 
   const defaultValues: CreateEventFormData = {
@@ -32,6 +43,7 @@ export default async function EditEventPage({
     venue: event.venue,
     city: event.city ?? "",
     coverImage: event.coverImage ?? "",
+    payoutMethodId: event.payoutMethodId ?? (payoutMethods.length === 1 ? payoutMethods[0].id : ""),
     ticketCategories: event.ticketCategories.map((cat) => ({
       id: cat.id,
       name: cat.name,
@@ -62,7 +74,12 @@ export default async function EditEventPage({
         </a>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Edit event</h1>
       </div>
-      <CreateEventForm eventId={id} defaultValues={defaultValues} />
+      <CreateEventForm
+        eventId={id}
+        defaultValues={defaultValues}
+        payoutMethods={payoutMethods}
+        payoutMethodLocked={paidOrderCount > 0}
+      />
     </div>
   );
 }

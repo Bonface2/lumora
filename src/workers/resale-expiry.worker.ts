@@ -1,3 +1,4 @@
+/* RESALE:
 import { Worker } from "bullmq";
 import { db } from "@/lib/db";
 import { connection, QUEUES, type ResaleExpiryJob } from "@/lib/queue";
@@ -26,3 +27,4 @@ worker.on("failed", (job, err) => {
 });
 
 export default worker;
+*/

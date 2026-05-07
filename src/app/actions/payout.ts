@@ -10,42 +10,36 @@ import {
 } from "@/lib/paystack";
 import type { ApiResponse } from "@/types";
 
-export async function getPayoutAccount(): Promise<{
-  accountName: string | null;
-  accountNumber: string | null;
-  bankName: string | null;
-  bankType: string | null;
-  recipientCode: string | null;
-}> {
-  const session = await auth();
-  if (!session?.user) {
-    return { accountName: null, accountNumber: null, bankName: null, bankType: null, recipientCode: null };
-  }
+export type PayoutMethodData = {
+  id: string;
+  label: string | null;
+  paystackBankName: string;
+  paystackBankCode: string;
+  bankType: string;
+  paystackAccountNumber: string;
+  paystackAccountName: string | null;
+  paystackRecipientCode: string;
+};
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      paystackAccountName: true,
-      paystackAccountNumber: true,
-      paystackBankName: true,
-      paystackBankCode: true,
-      paystackRecipientCode: true,
-    },
+export async function getPayoutMethods(): Promise<PayoutMethodData[]> {
+  const session = await auth();
+  if (!session?.user) return [];
+
+  const methods = await db.payoutMethod.findMany({
+    where: { sellerId: session.user.id },
+    orderBy: { createdAt: "asc" },
   });
 
-  // Derive bankType from stored bankCode by checking the known mobile money codes
-  const mobileMoneyCodes = new Set(["MPESA", "ATL_KE", "97", "MPPAYBILL", "MPTILL"]);
-  const bankType = user?.paystackBankCode
-    ? mobileMoneyCodes.has(user.paystackBankCode) ? "mobile_money" : "kepss"
-    : null;
-
-  return {
-    accountName: user?.paystackAccountName ?? null,
-    accountNumber: user?.paystackAccountNumber ?? null,
-    bankName: user?.paystackBankName ?? null,
-    bankType,
-    recipientCode: user?.paystackRecipientCode ?? null,
-  };
+  return methods.map((m) => ({
+    id: m.id,
+    label: m.label,
+    paystackBankName: m.paystackBankName,
+    paystackBankCode: m.paystackBankCode,
+    bankType: m.bankType,
+    paystackAccountNumber: m.paystackAccountNumber,
+    paystackAccountName: m.paystackAccountName,
+    paystackRecipientCode: m.paystackRecipientCode,
+  }));
 }
 
 export async function fetchBanks(): Promise<ApiResponse<PaystackBank[]>> {
@@ -74,36 +68,25 @@ export async function verifyAccountNumber(
   try {
     const result = await resolveAccount(accountNumber.trim(), bankCode);
     return { ok: true, data: result };
-  } catch {
-    return { ok: false, error: "Account not found. Check the number and bank, then try again." };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    const lower = msg.toLowerCase();
+    if (lower.includes("too many") || lower.includes("rate limit") || lower.includes("429")) {
+      return { ok: false, error: "Too many verification attempts — please wait a few minutes and try again." };
+    }
+    if (msg) return { ok: false, error: msg };
+    return { ok: false, error: "Could not verify account. Check the number and bank, then try again." };
   }
 }
 
-export async function deletePayoutAccount(): Promise<ApiResponse<null>> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: "Please sign in." };
-
-  await db.user.update({
-    where: { id: session.user.id },
-    data: {
-      paystackRecipientCode: null,
-      paystackBankCode: null,
-      paystackBankName: null,
-      paystackAccountNumber: null,
-      paystackAccountName: null,
-    },
-  });
-
-  return { ok: true, data: null };
-}
-
-export async function savePayoutAccount(input: {
+export async function savePayoutMethod(input: {
+  label?: string;
   bankCode: string;
   bankName: string;
   bankType: string;
   accountNumber: string;
   accountName: string;
-}): Promise<ApiResponse<{ recipientCode: string }>> {
+}): Promise<ApiResponse<{ id: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in." };
 
@@ -113,8 +96,9 @@ export async function savePayoutAccount(input: {
   });
   if (!user) return { ok: false, error: "User not found." };
 
-  // For paybill/till, accountName holds the account ref — use seller's profile name for Paystack
-  const recipientName = input.bankType === "mobile_money_business"
+  const isPaybill = input.bankCode === "MPPAYBILL";
+  const isMobileBusiness = input.bankType === "mobile_money_business";
+  const recipientName = isMobileBusiness
     ? (user.name || user.email)
     : (input.accountName || user.name || user.email);
 
@@ -126,19 +110,98 @@ export async function savePayoutAccount(input: {
       bankCode: input.bankCode,
     });
 
-    await db.user.update({
-      where: { id: session.user.id },
+    const method = await db.payoutMethod.create({
       data: {
+        sellerId: session.user.id,
+        label: input.label || null,
         paystackRecipientCode: recipientCode,
         paystackBankCode: input.bankCode,
         paystackBankName: input.bankName,
+        bankType: input.bankType,
         paystackAccountNumber: input.accountNumber,
-        paystackAccountName: recipientName,
+        paystackAccountName: isPaybill ? input.accountName : (recipientName ?? null),
       },
     });
 
-    return { ok: true, data: { recipientCode } };
+    return { ok: true, data: { id: method.id } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Failed to set up payout account." };
   }
+}
+
+export async function updatePayoutMethod(
+  id: string,
+  input: {
+    label?: string;
+    bankCode: string;
+    bankName: string;
+    bankType: string;
+    accountNumber: string;
+    accountName: string;
+  }
+): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Please sign in." };
+
+  const existing = await db.payoutMethod.findFirst({
+    where: { id, sellerId: session.user.id },
+  });
+  if (!existing) return { ok: false, error: "Payout method not found." };
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { name: true, email: true },
+  });
+  if (!user) return { ok: false, error: "User not found." };
+
+  const isPaybill = input.bankCode === "MPPAYBILL";
+  const isMobileBusiness = input.bankType === "mobile_money_business";
+  const recipientName = isMobileBusiness
+    ? (user.name || user.email)
+    : (input.accountName || user.name || user.email);
+
+  try {
+    const { recipientCode } = await createTransferRecipient({
+      type: input.bankType,
+      name: recipientName,
+      accountNumber: input.accountNumber,
+      bankCode: input.bankCode,
+    });
+
+    await db.payoutMethod.update({
+      where: { id },
+      data: {
+        label: input.label || null,
+        paystackRecipientCode: recipientCode,
+        paystackBankCode: input.bankCode,
+        paystackBankName: input.bankName,
+        bankType: input.bankType,
+        paystackAccountNumber: input.accountNumber,
+        paystackAccountName: isPaybill ? input.accountName : (recipientName ?? null),
+      },
+    });
+
+    return { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to update payout account." };
+  }
+}
+
+export async function deletePayoutMethod(id: string): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Please sign in." };
+
+  const existing = await db.payoutMethod.findFirst({
+    where: { id, sellerId: session.user.id },
+  });
+  if (!existing) return { ok: false, error: "Payout method not found." };
+
+  await db.event.updateMany({
+    where: { payoutMethodId: id },
+    data: { payoutMethodId: null },
+  });
+
+  await db.payoutMethod.delete({ where: { id } });
+
+  return { ok: true, data: null };
 }

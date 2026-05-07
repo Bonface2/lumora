@@ -52,17 +52,9 @@ export async function payBalanceInFull(orderId: string): Promise<void> {
   await cancelInstallmentJobs(unpaidIds);
 }
 
+/* RESALE:
 // ─── Resale Ownership Transfer ────────────────────────────────────────────────
 
-/**
- * Transfers an order (and its remaining installment obligations) to a new buyer.
- * Called after the resale purchase payment is confirmed.
- *
- * - Updates order.buyerId to the new buyer.
- * - Stamps originalBuyerId once (preserves the chain if the ticket is resold again).
- * - Updates currentOwnerId on all tickets in the order.
- * - Re-schedules reminder and revocation jobs so emails target the new buyer.
- */
 export async function transferOrderOwnership(
   orderId: string,
   newBuyerId: string,
@@ -84,7 +76,6 @@ export async function transferOrderOwnership(
       where: { id: orderId },
       data: {
         buyerId: newBuyerId,
-        // Only stamp originalBuyerId the first time it transfers
         originalBuyerId: order.originalBuyerId ?? previousBuyerId,
       },
     }),
@@ -94,9 +85,6 @@ export async function transferOrderOwnership(
     }),
   ]);
 
-  // Cancel jobs aimed at the previous buyer, then re-queue for the new one.
-  // The schedule stays the same; only the recipient changes (workers resolve
-  // the buyer from order.buyerId at run time).
   const pendingPayments = order.payments.filter(
     (p) => p.status === "PENDING" || p.status === "OVERDUE"
   );
@@ -114,3 +102,4 @@ export async function transferOrderOwnership(
     );
   }
 }
+*/

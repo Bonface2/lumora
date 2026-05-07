@@ -3,369 +3,511 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
-  getPayoutAccount,
+  getPayoutMethods,
   fetchBanks,
   verifyAccountNumber,
-  savePayoutAccount,
-  deletePayoutAccount,
+  savePayoutMethod,
+  updatePayoutMethod,
+  deletePayoutMethod,
+  type PayoutMethodData,
 } from "@/app/actions/payout";
 import type { PaystackBank } from "@/lib/paystack";
 
-type Step = "idle" | "verifying" | "verified" | "saving" | "done";
-
+type Step = "idle" | "verifying" | "verified" | "manual" | "saving";
 const MOBILE_MONEY_TYPES = new Set(["mobile_money", "mobile_money_business"]);
 
-export default function PayoutSettingsPage() {
-  const [current, setCurrent] = useState<{
-    accountName: string | null;
-    accountNumber: string | null;
-    bankName: string | null;
-    bankType: string | null;
-    recipientCode: string | null;
-  } | null>(null);
-  const [banks, setBanks] = useState<PaystackBank[]>([]);
-  const [bankCode, setBankCode] = useState("");
-  const [bankName, setBankName] = useState("");
-  const [bankType, setBankType] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");   // paybill number OR phone OR bank account
-  const [paybillAccount, setPaybillAccount] = useState(""); // paybill: second "account number" field
-  const [resolvedName, setResolvedName] = useState("");
-  const [step, setStep] = useState<Step>("idle");
-  const [error, setError] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+function accountDisplay(m: PayoutMethodData) {
+  if (m.bankType === "mobile_money_business") {
+    return `Paybill: ${m.paystackAccountNumber}${m.paystackAccountName ? ` · Acc: ${m.paystackAccountName}` : ""}`;
+  }
+  if (m.bankType === "mobile_money") return m.paystackAccountNumber;
+  return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
+}
 
-  const isMobileMoney = MOBILE_MONEY_TYPES.has(bankType);
-  const isPaybill = bankCode === "MPPAYBILL";
+function BankIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
+    </svg>
+  );
+}
+
+interface FormState {
+  editingId: string | null;
+  label: string;
+  bankCode: string;
+  bankName: string;
+  bankType: string;
+  accountNumber: string;
+  paybillAccount: string;
+  resolvedName: string;
+  manualName: string;
+  step: Step;
+  error: string;
+}
+
+const BLANK_FORM: FormState = {
+  editingId: null,
+  label: "",
+  bankCode: "",
+  bankName: "",
+  bankType: "",
+  accountNumber: "",
+  paybillAccount: "",
+  resolvedName: "",
+  manualName: "",
+  step: "idle",
+  error: "",
+};
+
+const inputClass =
+  "w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-500";
+
+export default function PayoutSettingsPage() {
+  const [methods, setMethods] = useState<PayoutMethodData[]>([]);
+  const [banks, setBanks] = useState<PaystackBank[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<FormState>(BLANK_FORM);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  const isMobileMoney = MOBILE_MONEY_TYPES.has(form.bankType);
+  const isPaybill = form.bankCode === "MPPAYBILL";
 
   useEffect(() => {
-    getPayoutAccount().then((acc) => {
-      setCurrent(acc);
-      setEditing(!acc.recipientCode);
-    });
-    fetchBanks().then((res) => {
-      if (res.ok) setBanks(res.data);
-    });
+    getPayoutMethods().then(setMethods);
+    fetchBanks().then((res) => { if (res.ok) setBanks(res.data); });
   }, []);
 
-  async function handleVerify() {
-    setError("");
-    setResolvedName("");
-    setStep("verifying");
-    const res = await verifyAccountNumber(accountNumber, bankCode);
-    if (!res.ok) {
-      setError(res.error);
-      setStep("idle");
-      return;
-    }
-    setResolvedName(res.data.accountName);
-    setStep("verified");
+  function openAdd() {
+    setForm(BLANK_FORM);
+    setShowForm(true);
+    setSavedMsg("");
   }
 
-  async function handleSave() {
-    setError("");
-    setStep("saving");
-    const selected = banks.find((b) => b.code === bankCode);
-    const res = await savePayoutAccount({
-      bankCode,
-      bankName: selected?.name ?? bankName,
-      bankType: selected?.type ?? bankType,
-      accountNumber,
-      // for paybill: accountName holds the paybill account ref; for others: the resolved/display name
-      accountName: isPaybill ? paybillAccount : resolvedName,
+  function openEdit(m: PayoutMethodData) {
+    setForm({
+      editingId: m.id,
+      label: m.label ?? "",
+      bankCode: m.paystackBankCode,
+      bankName: m.paystackBankName,
+      bankType: m.bankType,
+      accountNumber: m.paystackAccountNumber,
+      paybillAccount: m.bankType === "mobile_money_business" ? (m.paystackAccountName ?? "") : "",
+      resolvedName: m.bankType !== "mobile_money" && m.bankType !== "mobile_money_business"
+        ? (m.paystackAccountName ?? "") : "",
+      manualName: "",
+      step: "idle",
+      error: "",
     });
-    if (!res.ok) {
-      setError(res.error);
-      setStep(isMobileMoney ? "idle" : "verified");
-      return;
-    }
-    setCurrent({
-      accountName: isPaybill ? paybillAccount : (resolvedName || accountNumber),
-      accountNumber,
-      bankName: selected?.name ?? bankName,
-      bankType: selected?.type ?? bankType,
-      recipientCode: res.data.recipientCode,
-    });
-    setEditing(false);
-    setStep("done");
+    setShowForm(true);
+    setSavedMsg("");
   }
 
-  async function handleDelete() {
-    setDeleting(true);
-    const res = await deletePayoutAccount();
-    if (!res.ok) { setDeleting(false); return; }
-    setCurrent({ accountName: null, accountNumber: null, bankName: null, bankType: null, recipientCode: null });
-    setConfirmDelete(false);
-    setEditing(false);
-    setDeleting(false);
+  function closeForm() {
+    setShowForm(false);
+    setForm(BLANK_FORM);
+  }
+
+  function patch(update: Partial<FormState>) {
+    setForm((f) => ({ ...f, ...update }));
   }
 
   function handleBankChange(code: string) {
-    setBankCode(code);
     const b = banks.find((b) => b.code === code);
-    setBankName(b?.name ?? "");
-    setBankType(b?.type ?? "");
-    setAccountNumber("");
-    setPaybillAccount("");
-    setResolvedName("");
-    setStep("idle");
-    setError("");
+    patch({ bankCode: code, bankName: b?.name ?? "", bankType: b?.type ?? "", accountNumber: "", paybillAccount: "", resolvedName: "", manualName: "", step: "idle", error: "" });
   }
 
-  function handleAccountNumberChange(val: string) {
-    setAccountNumber(val);
-    setResolvedName("");
-    setStep("idle");
-    setError("");
+  async function handleVerify() {
+    patch({ error: "", resolvedName: "", manualName: "", step: "verifying" });
+    const res = await verifyAccountNumber(form.accountNumber, form.bankCode);
+    if (!res.ok) {
+      const isRateLimit = res.error.toLowerCase().includes("too many");
+      patch({ error: res.error, step: isRateLimit ? "idle" : "manual" });
+      return;
+    }
+    patch({ resolvedName: res.data.accountName, step: "verified" });
+  }
+
+  async function handleSave() {
+    patch({ error: "", step: "saving" });
+    const selected = banks.find((b) => b.code === form.bankCode);
+    const effectiveAccountName = isPaybill
+      ? form.paybillAccount
+      : form.resolvedName || form.manualName;
+    const payload = {
+      label: form.label || undefined,
+      bankCode: form.bankCode,
+      bankName: selected?.name ?? form.bankName,
+      bankType: selected?.type ?? form.bankType,
+      accountNumber: form.accountNumber,
+      accountName: effectiveAccountName,
+    };
+
+    const res = form.editingId
+      ? await updatePayoutMethod(form.editingId, payload)
+      : await savePayoutMethod(payload);
+
+    if (!res.ok) {
+      const fallbackStep = isMobileMoney ? "idle" : (form.resolvedName ? "verified" : "manual");
+      patch({ error: res.error, step: fallbackStep });
+      return;
+    }
+
+    const updated = await getPayoutMethods();
+    setMethods(updated);
+    setSavedMsg(form.editingId ? "Payout method updated." : "Payout method added.");
+    closeForm();
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    const res = await deletePayoutMethod(id);
+    if (res.ok) {
+      setMethods((prev) => prev.filter((m) => m.id !== id));
+      setConfirmDeleteId(null);
+    }
+    setDeleting(false);
   }
 
   const canSave = isPaybill
-    ? accountNumber.length >= 4 && paybillAccount.length >= 1
+    ? form.accountNumber.length >= 4 && form.paybillAccount.length >= 1
     : isMobileMoney
-    ? !!bankCode && accountNumber.length >= 9
-    : !!resolvedName;
+    ? !!form.bankCode && form.accountNumber.length >= 9
+    : !!form.resolvedName || (form.step === "manual" && form.manualName.trim().length >= 2);
 
   return (
-    <div className="min-h-full bg-gray-50 p-4 sm:p-6 md:p-8">
-      <div className="mx-auto max-w-xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-black text-gray-900">Payout settings</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Set up your payout account to receive transfers when Lumora settles your ticket sales.
-            Lumora retains a 6% platform fee on each transaction.
-          </p>
+    <div className="min-h-full bg-gray-50">
+      {/* Page header */}
+      <div className="border-b border-gray-200 bg-white px-6 py-6 sm:px-8">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900">Payout methods</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Where Lumora sends your ticket sales revenue after the platform fee is deducted.
+            </p>
+          </div>
+          {!showForm && methods.length > 0 && (
+            <button
+              onClick={openAdd}
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add method
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* Current account card */}
-        {current?.recipientCode && !editing && (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-1">
-                  Active payout account
-                </p>
-                <p className="text-lg font-bold text-gray-900">{current.bankName}</p>
-                <p className="text-sm text-gray-600">
-                  {current.bankType === "mobile_money_business" && current.accountNumber ? (
-                    <>Paybill/Till: {current.accountNumber}{current.accountName ? ` · Account: ${current.accountName}` : ""}</>
-                  ) : current.bankType === "mobile_money" ? (
-                    current.accountNumber
+      <div className="mx-auto max-w-3xl px-6 py-8 sm:px-8">
+
+        {savedMsg && !showForm && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+              <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-emerald-800">{savedMsg}</p>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {methods.length === 0 && !showForm && (
+          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 bg-white px-8 py-16 text-center">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
+              <BankIcon className="h-8 w-8 text-gray-400" />
+            </div>
+            <h2 className="text-base font-bold text-gray-900">No payout methods yet</h2>
+            <p className="mt-2 max-w-xs text-sm text-gray-500">
+              Add a bank account or M-PESA number so Lumora can send you your earnings after each event.
+            </p>
+            <button
+              onClick={openAdd}
+              className="mt-6 flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add your first method
+            </button>
+          </div>
+        )}
+
+        {/* Method cards */}
+        {methods.length > 0 && !showForm && (
+          <div className="space-y-3">
+            {methods.map((m, idx) => (
+              <div
+                key={m.id}
+                className="group flex items-center gap-5 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm transition-shadow hover:shadow-md"
+              >
+                {/* Icon */}
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600">
+                  {MOBILE_MONEY_TYPES.has(m.bankType) ? (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18h3" />
+                    </svg>
                   ) : (
-                    `****${current.accountNumber?.slice(-4)}${current.accountName ? ` · ${current.accountName}` : ""}`
+                    <BankIcon className="h-5 w-5" />
                   )}
-                </p>
+                </div>
+
+                {/* Details */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-gray-900">{m.paystackBankName}</span>
+                    {m.label && (
+                      <span className="rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
+                        {m.label}
+                      </span>
+                    )}
+                    {idx === 0 && methods.length > 1 && (
+                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-sm text-gray-500">{accountDisplay(m)}</p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex shrink-0 items-center gap-1">
+                  {confirmDeleteId !== m.id ? (
+                    <>
+                      <button
+                        onClick={() => openEdit(m)}
+                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(m.id)}
+                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2">
+                      <span className="text-xs text-gray-600">Remove?</span>
+                      <button
+                        onClick={() => handleDelete(m.id)}
+                        disabled={deleting}
+                        className="text-xs font-bold text-red-600 hover:underline disabled:opacity-50"
+                      >
+                        {deleting ? "Removing…" : "Yes"}
+                      </button>
+                      <span className="text-gray-300">·</span>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-xs font-semibold text-gray-500 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-                <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
+            ))}
+
+            <p className="pt-1 text-center text-xs text-gray-400">
+              You can assign a different payout method to each event when creating or editing it.
+            </p>
+          </div>
+        )}
+
+        {/* Add / Edit form */}
+        {showForm && (
+          <div className="rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-6 py-5">
+              <h2 className="text-base font-bold text-gray-900">
+                {form.editingId ? "Update payout method" : "Add payout method"}
+              </h2>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {form.editingId
+                  ? "Change the details for this payout destination."
+                  : "Connect a bank account or mobile money number."}
+              </p>
             </div>
-            <div className="mt-4 flex items-center gap-4">
-              <button
-                onClick={() => { setEditing(true); setConfirmDelete(false); setStep("idle"); setError(""); }}
-                className="text-sm font-semibold text-emerald-700 hover:underline"
-              >
-                Update
-              </button>
-              {!confirmDelete ? (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="text-sm font-semibold text-red-500 hover:underline"
+
+            <div className="space-y-5 px-6 py-6">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Label <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.label}
+                  onChange={(e) => patch({ label: e.target.value })}
+                  placeholder="e.g. Primary M-PESA, Business Account"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Bank or mobile money</label>
+                <select
+                  value={form.bankCode}
+                  onChange={(e) => handleBankChange(e.target.value)}
+                  className={inputClass}
                 >
-                  Remove
-                </button>
-              ) : (
-                <span className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-600">Remove payout account?</span>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="font-semibold text-red-600 hover:underline disabled:opacity-50"
-                  >
-                    {deleting ? "Removing…" : "Yes, remove"}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete(false)}
-                    className="font-semibold text-gray-500 hover:underline"
-                  >
-                    Cancel
-                  </button>
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* No account warning */}
-        {!current?.recipientCode && !editing && (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm font-semibold text-amber-800">
-              You haven&apos;t set up a payout account yet.
-            </p>
-            <p className="mt-1 text-sm text-amber-700">
-              Ticket sales will not be transferred to you until you add your payout details.
-            </p>
-          </div>
-        )}
-
-        {/* Setup form */}
-        {editing && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
-            <h2 className="text-base font-bold text-gray-900">
-              {current?.recipientCode ? "Update payout account" : "Add payout account"}
-            </h2>
-
-            {/* Bank / provider selector */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Bank or mobile money</label>
-              <select
-                value={bankCode}
-                onChange={(e) => handleBankChange(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="">Select your bank or provider</option>
-                {banks.filter((b) => MOBILE_MONEY_TYPES.has(b.type)).length > 0 && (
-                  <optgroup label="Mobile Money">
-                    {banks
-                      .filter((b) => MOBILE_MONEY_TYPES.has(b.type))
-                      .map((b) => (
+                  <option value="">Select your bank or provider</option>
+                  {banks.filter((b) => MOBILE_MONEY_TYPES.has(b.type)).length > 0 && (
+                    <optgroup label="Mobile Money">
+                      {banks.filter((b) => MOBILE_MONEY_TYPES.has(b.type)).map((b) => (
                         <option key={b.code} value={b.code}>{b.name}</option>
                       ))}
-                  </optgroup>
-                )}
-                <optgroup label="Banks">
-                  {banks
-                    .filter((b) => !MOBILE_MONEY_TYPES.has(b.type))
-                    .map((b) => (
+                    </optgroup>
+                  )}
+                  <optgroup label="Banks">
+                    {banks.filter((b) => !MOBILE_MONEY_TYPES.has(b.type)).map((b) => (
                       <option key={b.code} value={b.code}>{b.name}</option>
                     ))}
-                </optgroup>
-              </select>
-            </div>
+                  </optgroup>
+                </select>
+              </div>
 
-            {/* Fields — vary by type */}
-            {bankCode && (
-              <>
-                {/* Paybill: two fields */}
-                {isPaybill ? (
+              {form.bankCode && (
+                isPaybill ? (
                   <>
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-gray-700">Paybill number</label>
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={accountNumber}
-                        onChange={(e) => handleAccountNumberChange(e.target.value)}
+                        value={form.accountNumber}
+                        onChange={(e) => patch({ accountNumber: e.target.value, step: "idle", error: "" })}
                         placeholder="e.g. 123456"
-                        className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        className={inputClass}
                       />
                     </div>
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-gray-700">Account number</label>
                       <input
                         type="text"
-                        value={paybillAccount}
-                        onChange={(e) => { setPaybillAccount(e.target.value); setError(""); }}
+                        value={form.paybillAccount}
+                        onChange={(e) => patch({ paybillAccount: e.target.value, error: "" })}
                         placeholder="e.g. 0712345678 or your account ref"
-                        className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        className={inputClass}
                       />
-                      <p className="mt-1.5 text-xs text-gray-400">
-                        The account number associated with this paybill.
-                      </p>
                     </div>
                   </>
                 ) : isMobileMoney ? (
-                  /* Till / plain mobile money: one field */
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                      {bankType === "mobile_money_business" ? "Till number" : "Phone number"}
+                      {form.bankType === "mobile_money_business" ? "Till number" : "Phone number"}
                     </label>
                     <input
                       type="tel"
                       inputMode="numeric"
-                      value={accountNumber}
-                      onChange={(e) => handleAccountNumberChange(e.target.value)}
-                      placeholder={bankType === "mobile_money_business" ? "e.g. 123456" : "e.g. 0712345678"}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.accountNumber}
+                      onChange={(e) => patch({ accountNumber: e.target.value, step: "idle", error: "" })}
+                      placeholder={form.bankType === "mobile_money_business" ? "e.g. 123456" : "e.g. 0712345678"}
+                      className={inputClass}
                     />
                     <p className="mt-1.5 text-xs text-gray-400">
-                      No verification needed — your profile name will be used as the recipient name.
+                      No verification needed — your profile name will be used.
                     </p>
                   </div>
                 ) : (
-                  /* Bank account: number + verify */
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-gray-700">Account number</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={accountNumber}
-                        onChange={(e) => handleAccountNumberChange(e.target.value)}
+                        value={form.accountNumber}
+                        onChange={(e) => patch({ accountNumber: e.target.value, resolvedName: "", manualName: "", step: "idle", error: "" })}
                         placeholder="e.g. 1234567890"
-                        className="flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        className={`${inputClass} flex-1`}
                       />
                       <Button
                         onClick={handleVerify}
-                        loading={step === "verifying"}
-                        disabled={accountNumber.length < 6}
+                        loading={form.step === "verifying"}
+                        disabled={form.accountNumber.length < 6}
                         size="sm"
                       >
                         Verify
                       </Button>
                     </div>
                   </div>
-                )}
-              </>
-            )}
-
-            {/* Resolved name (bank accounts only) */}
-            {resolvedName && (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <svg className="h-5 w-5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                <div>
-                  <p className="text-xs text-emerald-600">Account verified</p>
-                  <p className="text-sm font-bold text-gray-900">{resolvedName}</p>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-            )}
-
-            <div className="flex gap-3 pt-1">
-              {current?.recipientCode && (
-                <button
-                  onClick={() => setEditing(false)}
-                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
+                )
               )}
-              <Button
-                className="flex-1"
-                onClick={handleSave}
-                loading={step === "saving"}
-                disabled={!canSave}
+
+              {form.resolvedName && (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                    <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-emerald-600">Account verified</p>
+                    <p className="text-sm font-bold text-gray-900">{form.resolvedName}</p>
+                  </div>
+                </div>
+              )}
+
+              {form.step === "manual" && (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">
+                        {form.error || "Automatic verification unavailable for this bank."}
+                      </p>
+                      <p className="mt-0.5 text-xs text-amber-700">
+                        Enter your account name manually. Double-check it — payouts sent to the wrong account cannot be reversed.
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                      Account name <span className="font-normal text-gray-400">(as it appears on your bank statement)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.manualName}
+                      onChange={(e) => patch({ manualName: e.target.value })}
+                      placeholder="e.g. JOHN KAMAU MWANGI"
+                      className={inputClass}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              )}
+
+              {form.error && form.step !== "manual" && (
+                <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <p className="text-sm text-red-700">{form.error}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 border-t border-gray-100 px-6 py-5">
+              <button
+                onClick={closeForm}
+                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
               >
-                Save payout account
+                Cancel
+              </button>
+              <Button className="flex-1" onClick={handleSave} loading={form.step === "saving"} disabled={!canSave}>
+                {form.editingId ? "Update method" : "Save method"}
               </Button>
             </div>
 
-            <p className="text-center text-xs text-gray-400">
-              Lumora retains 6% of each sale. The remaining 94% is settled directly to this account.
+            <p className="pb-5 text-center text-xs text-gray-400">
+              Lumora deducts a platform fee from each sale. The remainder is settled directly to this account.
             </p>
-          </div>
-        )}
-
-        {step === "done" && (
-          <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-            Payout account saved — you&apos;re all set to receive payments.
           </div>
         )}
       </div>

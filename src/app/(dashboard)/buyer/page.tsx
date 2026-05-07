@@ -2,7 +2,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format } from "date-fns";
 import Link from "next/link";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
+import { InstallmentPaymentStatus } from "@prisma/client";
 
 const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
   PENDING: { label: "Pending", cls: "bg-gray-100 text-gray-600" },
@@ -26,6 +27,33 @@ function eventGradient(id: string) {
   return gradients[id.charCodeAt(0) % gradients.length];
 }
 
+const MS_PER_DAY = 86_400_000;
+
+function calcRevocation(
+  gracePeriodDays: number,
+  payments: { status: string; dueDate: Date }[],
+  orderStatus: string,
+  now: Date
+): { label: string; level: "terminal" | "critical" | "warning" | "caution" | "none" } {
+  if (orderStatus === "REVOKED")   return { label: "Ticket revoked due to missed payments.", level: "terminal" };
+  if (orderStatus === "DEFAULTED") return { label: "Payment overdue — ticket at risk of revocation.", level: "critical" };
+
+  const earliest = payments
+    .filter((p) => p.status === "OVERDUE" || p.status === "DEFAULTED" || (p.status === "PENDING" && p.dueDate < now))
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())[0];
+
+  if (!earliest) return { label: "", level: "none" };
+
+  const revocationDate = new Date(earliest.dueDate.getTime() + gracePeriodDays * MS_PER_DAY);
+  const days = Math.ceil((revocationDate.getTime() - now.getTime()) / MS_PER_DAY);
+
+  if (days <= 0) return { label: "Revocation due — pay immediately to keep your ticket.", level: "critical" };
+  if (days === 1) return { label: "1 day to revocation — pay now to keep your ticket.", level: "critical" };
+  if (days <= 3) return { label: `${days} days to revocation — pay soon to keep your ticket.`, level: "critical" };
+  if (days <= 7) return { label: `${days} days to revocation.`, level: "warning" };
+  return { label: `${days} days to revocation.`, level: "caution" };
+}
+
 type Tab = "all" | "paid" | "installments" | "defaulted";
 
 const TABS: { value: Tab; label: string }[] = [
@@ -43,22 +71,50 @@ export default async function BuyerTicketsPage({
   const session = await auth();
   const { tab: rawTab } = await searchParams;
   const tab = (TABS.find((t) => t.value === rawTab)?.value ?? "all") as Tab;
+  const now = new Date();
 
-  const statusFilter: OrderStatus[] = (() => {
-    if (tab === "paid")         return ["PAID_IN_FULL"];
-    if (tab === "installments") return ["PARTIAL_PAID"];
-    if (tab === "defaulted")    return ["DEFAULTED", "REVOKED"];
-    return ["PARTIAL_PAID", "PAID_IN_FULL", "DEFAULTED", "REVOKED"];
+  // An order is "in default" if its status is DEFAULTED/REVOKED OR if it is
+  // PARTIAL_PAID with at least one installment that is past its due date.
+  const overduePaymentStatuses = [
+    InstallmentPaymentStatus.PENDING,
+    InstallmentPaymentStatus.OVERDUE,
+    InstallmentPaymentStatus.DEFAULTED,
+  ];
+
+  const defaultedWhere: Prisma.OrderWhereInput = {
+    buyerId: session!.user.id,
+    OR: [
+      { status: { in: ["DEFAULTED", "REVOKED"] as OrderStatus[] } },
+      {
+        status: "PARTIAL_PAID" as OrderStatus,
+        payments: {
+          some: {
+            paymentNumber: { gt: 0 },
+            dueDate: { lt: now },
+            status: { in: overduePaymentStatuses },
+          },
+        },
+      },
+    ],
+  };
+
+  const ordersWhere: Prisma.OrderWhereInput = (() => {
+    if (tab === "paid")         return { buyerId: session!.user.id, status: "PAID_IN_FULL" };
+    if (tab === "installments") return { buyerId: session!.user.id, status: "PARTIAL_PAID" };
+    if (tab === "defaulted")    return defaultedWhere;
+    return { buyerId: session!.user.id, status: { notIn: ["PENDING", "CANCELLED"] as OrderStatus[] } };
   })();
 
   const orders = await db.order.findMany({
-    where: {
-      buyerId: session!.user.id,
-      status: { in: statusFilter },
-    },
+    where: ordersWhere,
     include: {
       tickets: true,
-      ticketCategory: { include: { event: true } },
+      ticketCategory: {
+        include: {
+          event: true,
+          installmentPlan: { select: { gracePeriodDays: true } },
+        },
+      },
       payments: { orderBy: { paymentNumber: "asc" } },
     },
     orderBy: { createdAt: "desc" },
@@ -69,14 +125,24 @@ export default async function BuyerTicketsPage({
       buyerId: session!.user.id,
       status: { notIn: ["PENDING", "CANCELLED"] },
     },
-    select: { status: true },
+    select: {
+      id: true,
+      status: true,
+      payments: {
+        where: { paymentNumber: { gt: 0 }, dueDate: { lt: now }, status: { in: ["PENDING", "OVERDUE", "DEFAULTED"] } },
+        select: { id: true },
+      },
+    },
   });
 
   const counts = {
     all:          allOrders.length,
     paid:         allOrders.filter((o) => o.status === "PAID_IN_FULL").length,
     installments: allOrders.filter((o) => o.status === "PARTIAL_PAID").length,
-    defaulted:    allOrders.filter((o) => o.status === "DEFAULTED" || o.status === "REVOKED").length,
+    defaulted:    allOrders.filter(
+      (o) => o.status === "DEFAULTED" || o.status === "REVOKED" ||
+             (o.status === "PARTIAL_PAID" && o.payments.length > 0)
+    ).length,
   };
 
   const user = await db.user.findUnique({
@@ -122,7 +188,7 @@ export default async function BuyerTicketsPage({
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Browse events
+            Explore experiences
           </Link>
         </div>
       </div>
@@ -133,19 +199,29 @@ export default async function BuyerTicketsPage({
           {TABS.map((t) => {
             const count = counts[t.value];
             const active = tab === t.value;
+            const isDefaulted = t.value === "defaulted";
+            const hasDefaulted = isDefaulted && counts.defaulted > 0;
             return (
               <Link
                 key={t.value}
                 href={t.value === "all" ? "/buyer" : `/buyer?tab=${t.value}`}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
                   active
-                    ? "bg-primary-600 text-white shadow-sm"
+                    ? isDefaulted
+                      ? "bg-red-600 text-white shadow-sm"
+                      : "bg-primary-600 text-white shadow-sm"
+                    : hasDefaulted
+                    ? "bg-red-50 text-red-700 border border-red-300 hover:bg-red-100"
                     : "bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:text-gray-900"
                 }`}
               >
                 {t.label}
                 <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${
-                  active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                  active
+                    ? "bg-white/20 text-white"
+                    : hasDefaulted
+                    ? "bg-red-200 text-red-700"
+                    : "bg-gray-100 text-gray-500"
                 }`}>
                   {count}
                 </span>
@@ -163,14 +239,14 @@ export default async function BuyerTicketsPage({
             </div>
             <p className="mt-4 text-lg font-bold text-gray-900">No tickets here</p>
             <p className="mt-1 text-sm text-gray-500">
-              {tab === "all" ? "Browse events and grab your first ticket." : "Nothing in this category yet."}
+              {tab === "all" ? "Browse experiences and grab your first ticket." : "Nothing in this category yet."}
             </p>
             {tab === "all" && (
               <Link
                 href="/events"
                 className="mt-5 rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-700 transition-colors"
               >
-                Browse events
+                Explore experiences
               </Link>
             )}
           </div>
@@ -276,11 +352,24 @@ export default async function BuyerTicketsPage({
                           </div>
                         )}
 
-                        {(order.status === "DEFAULTED" || order.status === "REVOKED") && (
-                          <p className="mt-2 text-xs text-red-600 font-medium">
-                            {order.status === "REVOKED" ? "Ticket revoked due to missed payments." : "Payment overdue — ticket at risk of revocation."}
-                          </p>
-                        )}
+                        {(() => {
+                          const grace = order.ticketCategory.installmentPlan?.gracePeriodDays ?? 7;
+                          const rev = calcRevocation(grace, order.payments, order.status, now);
+                          if (rev.level === "none") return null;
+                          const styles = {
+                            terminal: "bg-gray-100 text-gray-600 border-gray-300",
+                            critical: "bg-red-50 text-red-700 border-red-300",
+                            warning:  "bg-amber-50 text-amber-700 border-amber-300",
+                            caution:  "bg-orange-50 text-orange-700 border-orange-200",
+                          }[rev.level];
+                          const icon = rev.level === "terminal" ? "⛔" : rev.level === "critical" ? "🚨" : "⚠️";
+                          return (
+                            <p className={`mt-2 flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold ${styles}`}>
+                              <span className="shrink-0">{icon}</span>
+                              {rev.label}
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

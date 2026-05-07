@@ -61,20 +61,16 @@ model User {
   role          Role      @default(BUYER)
   emailVerified DateTime?
   image         String?
-  phone                 String?
-  paystackRecipientCode String?
-  paystackBankCode      String?
-  paystackBankName      String?
-  paystackAccountNumber String?
-  paystackAccountName   String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   accounts        Account[]
   sessions        Session[]
   events          Event[]
   orders          Order[]
   payouts         Payout[]
+  payoutMethods   PayoutMethod[]
   resaleListings  ResaleListing[]
   resalePurchases ResaleListing[] @relation("resale_purchases")
 
@@ -135,11 +131,13 @@ model Event {
   city        String?
   coverImage  String?
   status             EventStatus @default(DRAFT)
-  platformFeePercent Decimal?    @db.Decimal(5, 2) // overrides global 6% if set
+  platformFeePercent Decimal?    @db.Decimal(5, 2)
+  payoutMethodId     String?
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
   seller           User             @relation(fields: [sellerId], references: [id])
+  payoutMethod     PayoutMethod?    @relation(fields: [payoutMethodId], references: [id])
   ticketCategories TicketCategory[]
 
   @@map("events")
@@ -282,20 +280,42 @@ model PaystackTransaction {
 // ─── Payouts ──────────────────────────────────────────────────────────────────
 
 model Payout {
-  id          String   @id @default(cuid())
-  sellerId    String
-  amount      Decimal  @db.Decimal(10, 2)
-  reference   String   @unique
-  paystackRef String?
-  status      String   @default("pending") // pending | success | failed
-  reason      String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  sellerId       String
+  payoutMethodId String?
+  amount         Decimal  @db.Decimal(10, 2)
+  reference      String   @unique
+  paystackRef    String?
+  status         String   @default("pending")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  seller User @relation(fields: [sellerId], references: [id])
+  seller       User          @relation(fields: [sellerId], references: [id])
+  payoutMethod PayoutMethod? @relation(fields: [payoutMethodId], references: [id])
 
   @@map("payouts")
+}
+
+model PayoutMethod {
+  id                    String   @id @default(cuid())
+  sellerId              String
+  label                 String?
+  paystackRecipientCode String
+  paystackBankCode      String
+  paystackBankName      String
+  bankType              String
+  paystackAccountNumber String
+  paystackAccountName   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  seller User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  events Event[]
+  payouts Payout[]
+
+  @@map("payout_methods")
 }
 
 // ─── Resale Market ────────────────────────────────────────────────────────────
