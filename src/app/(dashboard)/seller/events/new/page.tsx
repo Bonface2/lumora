@@ -22,6 +22,7 @@ export default async function NewEventPage() {
     coverImage: "",
     payoutMethodId: payoutMethods.length === 1 ? payoutMethods[0].id : "",
     eventType: "PAID",
+    experienceType: "PUBLIC",
     isPrivate: false,
     ticketCategories: [
       {

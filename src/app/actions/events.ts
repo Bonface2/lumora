@@ -80,6 +80,7 @@ export async function createEvent(
       coverImage: data.coverImage ?? null,
       payoutMethodId: data.eventType === "PAID" ? (data.payoutMethodId ?? null) : null,
       eventType: data.eventType,
+      experienceType: data.experienceType,
       isPrivate: data.isPrivate,
       status: "DRAFT",
       ticketCategories: {
@@ -123,12 +124,17 @@ export async function publishEvent(
 
   const event = await db.event.findFirst({
     where: { id: eventId, sellerId: session.user.id },
-    include: { ticketCategories: true },
+    include: { ticketCategories: { where: { isComplimentary: false } } },
   });
 
   if (!event) return { ok: false, error: "Event not found." };
   if (event.ticketCategories.length === 0)
     return { ok: false, error: "Add at least one ticket category before publishing." };
+
+  // Activation fee only applies to FREE PUBLIC events
+  if (event.eventType === "FREE" && event.experienceType === "PUBLIC" && !event.platformFeePaid) {
+    return { ok: false, error: "Please pay the activation fee before publishing a free public event." };
+  }
 
   await db.event.update({
     where: { id: eventId },
@@ -205,7 +211,6 @@ export async function updateEvent(
     }
   }
 
-  // Update basic event fields
   await db.event.update({
     where: { id: eventId },
     data: {
@@ -217,6 +222,7 @@ export async function updateEvent(
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
       payoutMethodId: data.eventType === "PAID" ? (data.payoutMethodId ?? null) : null,
+      experienceType: data.experienceType,
       isPrivate: data.isPrivate,
     },
   });
@@ -345,32 +351,83 @@ export async function unpublishEvent(
 }
 
 export async function initiateEventActivationFee(
-  eventId: string
+  eventId: string,
+  tierId: string
 ): Promise<ApiResponse<{ authorizationUrl: string }>> {
   const session = await auth();
   if (!session?.user || session.user.role !== "SELLER") {
     return { ok: false, error: "Unauthorized." };
   }
 
-  const event = await db.event.findFirst({
-    where: { id: eventId, sellerId: session.user.id },
-  });
+  const [event, tier] = await Promise.all([
+    db.event.findFirst({ where: { id: eventId, sellerId: session.user.id } }),
+    db.platformFeeTier.findUnique({ where: { id: tierId } }),
+  ]);
 
   if (!event) return { ok: false, error: "Event not found." };
   if (event.eventType !== "FREE") return { ok: false, error: "This event is not a free event." };
   if (event.platformFeePaid) return { ok: false, error: "Activation fee already paid." };
+  if (!tier || !tier.isActive) return { ok: false, error: "Invalid tier selected." };
 
   const reference = generateReference("ACT");
 
   const res = await initializePayment({
     email: session.user.email!,
-    amount: 100000, // KES 1,000 in smallest unit
+    amount: tier.price * 100, // convert KES to smallest unit
     reference,
     metadata: {
       type: "free_event_fee",
       eventId,
+      tierId: tier.id,
+      tierCap: tier.maxCap,
+      tierPrice: tier.price,
     },
     callback_url: `${process.env.NEXTAUTH_URL}/seller/events/${eventId}/activate/callback`,
+  });
+
+  return { ok: true, data: { authorizationUrl: res.data.authorization_url } };
+}
+
+export async function initiateEventTierUpgrade(
+  eventId: string,
+  tierId: string
+): Promise<ApiResponse<{ authorizationUrl: string }>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const [event, tier] = await Promise.all([
+    db.event.findFirst({ where: { id: eventId, sellerId: session.user.id } }),
+    db.platformFeeTier.findUnique({ where: { id: tierId } }),
+  ]);
+
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.eventType !== "FREE") return { ok: false, error: "This event is not a free event." };
+  if (!event.platformFeePaid) return { ok: false, error: "Please complete the initial activation first." };
+  if (!tier || !tier.isActive) return { ok: false, error: "Invalid tier selected." };
+
+  const alreadyPaid = Number(event.platformFeeAmount ?? 0);
+  if (tier.price <= alreadyPaid) {
+    return { ok: false, error: "You are already on this tier or higher." };
+  }
+
+  const upgradeCost = tier.price - alreadyPaid;
+  const reference = generateReference("UPG");
+
+  const res = await initializePayment({
+    email: session.user.email!,
+    amount: upgradeCost * 100,
+    reference,
+    metadata: {
+      type: "free_event_fee",
+      eventId,
+      tierId: tier.id,
+      tierCap: tier.maxCap,
+      tierPrice: tier.price,
+      isUpgrade: true,
+    },
+    callback_url: `${process.env.NEXTAUTH_URL}/seller/events/${eventId}`,
   });
 
   return { ok: true, data: { authorizationUrl: res.data.authorization_url } };

@@ -15,6 +15,12 @@ enum EventType {
   PAID
 }
 
+enum ExperienceType {
+  PUBLIC
+  INVITE_ONLY
+  GROUP_TRIP
+}
+
 enum Role {
   BUYER
   SELLER
@@ -138,11 +144,14 @@ model Event {
   venue       String
   city        String?
   coverImage  String?
-  status             EventStatus @default(DRAFT)
-  eventType          EventType   @default(PAID)
-  isPrivate          Boolean     @default(false)
+  status             EventStatus    @default(DRAFT)
+  eventType          EventType      @default(PAID)
+  experienceType     ExperienceType @default(PUBLIC)
+  isPrivate          Boolean        @default(false)
   platformFeePaid    Boolean     @default(false)
   platformFeePercent Decimal?    @db.Decimal(5, 2)
+  platformFeeAmount  Decimal?    @db.Decimal(10, 2)
+  attendeeCap        Int?
   payoutMethodId     String?
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
@@ -376,4 +385,19 @@ model ResaleListing {
   @@index([sellerId])
   @@index([status])
   @@map("resale_listings")
+}
+
+// ─── Platform fee tiers (admin-configurable) ─────────────────────────────────
+
+model PlatformFeeTier {
+  id        String   @id @default(cuid())
+  label     String   // e.g. "Starter", "Growth", "Standard", "Large"
+  maxCap    Int?     // null = unlimited
+  price     Int      // KES (not kobo)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_fee_tiers")
 }

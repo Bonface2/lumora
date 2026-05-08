@@ -34,6 +34,22 @@ export async function createOrder(input: {
   if (available <= 0) return { ok: false, error: "This ticket category is sold out." };
   if (quantity > available) return { ok: false, error: `Only ${available} ticket${available > 1 ? "s" : ""} remaining.` };
 
+  // Enforce attendee cap for free events
+  if (category.event.eventType === "FREE" && category.event.attendeeCap !== null) {
+    const totalSoldAgg = await db.ticketCategory.aggregate({
+      where: { eventId: category.event.id, isComplimentary: false },
+      _sum: { soldQuantity: true },
+    });
+    const totalSold = totalSoldAgg._sum.soldQuantity ?? 0;
+    const remainingInTier = Math.max(0, category.event.attendeeCap - totalSold);
+    if (remainingInTier <= 0) {
+      return { ok: false, error: "This event has reached its registration limit. The organiser may expand capacity soon." };
+    }
+    if (quantity > remainingInTier) {
+      return { ok: false, error: `Only ${remainingInTier} spot${remainingInTier > 1 ? "s" : ""} left in the current tier.` };
+    }
+  }
+
   if (input.useInstallments && !category.allowInstallments) {
     return { ok: false, error: "Installments are not available for this ticket." };
   }
@@ -163,6 +179,24 @@ export async function createCartOrder(input: {
     }
   }
   if (errors.length) return { ok: false, error: errors.join(" ") };
+
+  // Enforce attendee cap for free events (cart flow — all categories share the same event)
+  const firstCat = categories[0];
+  if (firstCat && firstCat.event.eventType === "FREE" && firstCat.event.attendeeCap !== null) {
+    const totalSoldAgg = await db.ticketCategory.aggregate({
+      where: { eventId: firstCat.event.id, isComplimentary: false },
+      _sum: { soldQuantity: true },
+    });
+    const totalSold = totalSoldAgg._sum.soldQuantity ?? 0;
+    const cartTotal = input.items.reduce((s, i) => s + Math.max(1, i.quantity), 0);
+    const remainingInTier = Math.max(0, firstCat.event.attendeeCap - totalSold);
+    if (cartTotal > remainingInTier) {
+      if (remainingInTier === 0) {
+        return { ok: false, error: "This event has reached its registration limit." };
+      }
+      return { ok: false, error: `Only ${remainingInTier} spot${remainingInTier > 1 ? "s" : ""} left in the current tier.` };
+    }
+  }
 
   const enriched = input.items.map((item) => {
     const cat = categories.find((c) => c.id === item.ticketCategoryId)!;

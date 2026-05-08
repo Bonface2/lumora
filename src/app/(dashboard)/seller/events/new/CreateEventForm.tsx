@@ -23,6 +23,7 @@ interface Props {
   payoutMethods: PayoutMethodData[];
   payoutMethodLocked?: boolean;
   eventType?: "FREE" | "PAID";
+  experienceType?: "PUBLIC" | "INVITE_ONLY" | "GROUP_TRIP";
 }
 
 const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
@@ -48,16 +49,17 @@ function methodDisplay(m: PayoutMethodData) {
   return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
 }
 
-export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp }: Props) {
+export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp, experienceType: experienceTypeProp }: Props) {
   const isEdit = Boolean(eventId);
   const router = useRouter();
   const [serverError, setServerError] = useState("");
   const [localMethods, setLocalMethods] = useState<PayoutMethodData[]>(payoutMethods);
   const [showPayoutForm, setShowPayoutForm] = useState(false);
 
-  // For editing, read eventType from defaultValues; for new events, use prop
   const resolvedEventType = (defaultValues?.eventType ?? eventTypeProp ?? "PAID") as "FREE" | "PAID";
+  const resolvedExperienceType = (defaultValues?.experienceType ?? experienceTypeProp ?? "PUBLIC") as "PUBLIC" | "INVITE_ONLY" | "GROUP_TRIP";
   const isFree = resolvedEventType === "FREE";
+  const isGroupTrip = resolvedExperienceType === "GROUP_TRIP";
 
   const methods = useForm<CreateEventFormData, unknown, CreateEventFormData>({
     resolver: zodResolver(isEdit ? editEventSchema : createEventSchema),
@@ -65,7 +67,8 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       ticketCategories: [{ ...BLANK_CATEGORY }],
       payoutMethodId: payoutMethods.length === 1 ? payoutMethods[0].id : "",
       eventType: resolvedEventType,
-      isPrivate: false,
+      experienceType: resolvedExperienceType,
+      isPrivate: resolvedExperienceType !== "PUBLIC",
     },
   });
 
@@ -78,10 +81,10 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
     formState: { errors, isSubmitting },
   } = methods;
 
-  // Sync eventType into form value
   useEffect(() => {
     setValue("eventType", resolvedEventType);
-  }, [resolvedEventType, setValue]);
+    setValue("experienceType", resolvedExperienceType);
+  }, [resolvedEventType, resolvedExperienceType, setValue]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -100,7 +103,8 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       setServerError(res.error);
       return;
     }
-    if (!isEdit && data.eventType === "FREE") {
+    // Only redirect to activate for FREE PUBLIC events (not invite-only or group trips)
+    if (!isEdit && data.eventType === "FREE" && data.experienceType === "PUBLIC") {
       router.push(`/seller/events/${res.data.id}/activate`);
     } else {
       router.push(`/seller/events/${res.data.id}`);
@@ -114,6 +118,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Hidden fields */}
         <input type="hidden" {...register("eventType")} />
+        <input type="hidden" {...register("experienceType")} />
 
         {serverError && (
           <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -343,15 +348,24 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
           </Card>
         )}
 
-        {/* Ticket categories */}
+        {/* Ticket categories / Participant spots */}
+        {isGroupTrip && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="font-semibold">Group trip mode:</span> Participants will receive a booking confirmation email. No QR ticket is generated — this experience uses payment tracking only.
+          </div>
+        )}
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="font-semibold text-gray-900">Ticket categories</h2>
+              <h2 className="font-semibold text-gray-900">
+                {isGroupTrip ? "Participant spots" : "Ticket categories"}
+              </h2>
               <p className="text-sm text-gray-500">
-                {isFree
-                  ? "Add one or more ticket tiers (e.g. General, VIP). Prices are locked at free."
-                  : "Add one or more ticket tiers (e.g. Regular, VIP)"}
+                {isGroupTrip
+                  ? "Define pricing tiers for participants (e.g. Single, Couple, Family)."
+                  : isFree
+                    ? "Add one or more ticket tiers (e.g. General, VIP). Prices are locked at free."
+                    : "Add one or more ticket tiers (e.g. Regular, VIP)"}
               </p>
             </div>
             <Button

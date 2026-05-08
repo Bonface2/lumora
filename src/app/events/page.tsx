@@ -9,7 +9,7 @@ import { Footer } from "@/components/layouts/Footer";
 const getCachedEvents = unstable_cache(
   () =>
     db.event.findMany({
-      where: { status: "PUBLISHED", isPrivate: false },
+      where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
       include: {
         ticketCategories: {
           select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },

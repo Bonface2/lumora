@@ -744,3 +744,63 @@ export async function sendTicketRevocationNotice({
     }),
   });
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   8. Group trip booking confirmation (no QR ticket)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendBookingConfirmation({
+  to,
+  name,
+  eventTitle,
+  categoryName,
+  quantity,
+  totalAmount,
+  paidAmount,
+  eventDate,
+  venue,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+  categoryName: string;
+  quantity: number;
+  totalAmount: number;
+  paidAmount: number;
+  eventDate: string;
+  venue: string;
+}) {
+  const isFullyPaid = paidAmount >= totalAmount - 0.01;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      You're booked, ${name}!
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      Your ${quantity > 1 ? `${quantity} spots are` : "spot is"} confirmed for this experience.
+      ${isFullyPaid ? "Payment is complete." : "Your first payment has been received."}
+    </p>
+
+    ${infoCard([
+      { label: "Experience",   value: eventTitle },
+      { label: "Tier",         value: categoryName },
+      { label: "Spots booked", value: String(quantity) },
+      { label: "Date",         value: eventDate },
+      { label: "Location",     value: venue },
+    ])}
+
+    ${!isFullyPaid ? `<div style="margin-top:20px;">${progressBar(paidAmount, totalAmount)}</div>` : ""}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Booking confirmed: ${eventTitle}`,
+    html: shell({
+      preheader: `You're booked for ${eventTitle}!`,
+      headline: eventTitle,
+      label: "Booking confirmed",
+      body,
+    }),
+  });
+}

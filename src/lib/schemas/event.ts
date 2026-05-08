@@ -33,6 +33,7 @@ const eventBaseSchema = z.object({
   coverImage: z.string().optional(),
   payoutMethodId: z.string().optional(),
   eventType: z.enum(["FREE", "PAID"]),
+  experienceType: z.enum(["PUBLIC", "INVITE_ONLY", "GROUP_TRIP"]),
   isPrivate: z.boolean(),
   ticketCategories: z
     .array(ticketCategorySchema)

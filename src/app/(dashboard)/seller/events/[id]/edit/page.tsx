@@ -45,6 +45,7 @@ export default async function EditEventPage({
     coverImage: event.coverImage ?? "",
     payoutMethodId: event.payoutMethodId ?? (payoutMethods.length === 1 ? payoutMethods[0].id : ""),
     eventType: (event.eventType as "FREE" | "PAID") ?? "PAID",
+    experienceType: (event.experienceType as "PUBLIC" | "INVITE_ONLY" | "GROUP_TRIP") ?? "PUBLIC",
     isPrivate: event.isPrivate ?? false,
     ticketCategories: event.ticketCategories.map((cat) => ({
       id: cat.id,

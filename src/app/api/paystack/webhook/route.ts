@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { sendTicketConfirmation, sendInstallmentReceipt, sendCartConfirmation } from "@/lib/email";
+import { sendTicketConfirmation, sendInstallmentReceipt, sendCartConfirmation, sendBookingConfirmation } from "@/lib/email";
 import {
   scheduleInstallmentReminder,
   scheduleDefaultWarnings,
@@ -55,13 +55,31 @@ export async function POST(req: Request) {
   const { reference, amount } = event.data;
   const amountNaira = amount / 100;
 
-  // Check if this is a free event activation fee (handled before transaction lookup)
-  const webhookMeta = event.data.metadata as { type?: string; eventId?: string } | null;
+  // Check if this is a platform fee payment (activation or tier upgrade)
+  const webhookMeta = event.data.metadata as {
+    type?: string;
+    eventId?: string;
+    tierId?: string;
+    tierCap?: number | null;
+    tierPrice?: number;
+    isUpgrade?: boolean;
+  } | null;
+
   if (webhookMeta?.type === "free_event_fee" && webhookMeta?.eventId) {
-    if (Number(event.data.amount) >= 100000) {
+    const paidKes = Number(event.data.amount) / 100;
+    if (paidKes > 0) {
+      const currentEvent = await db.event.findUnique({
+        where: { id: webhookMeta.eventId },
+        select: { platformFeeAmount: true },
+      });
+      const previouslyPaid = Number(currentEvent?.platformFeeAmount ?? 0);
       await db.event.update({
         where: { id: webhookMeta.eventId },
-        data: { platformFeePaid: true },
+        data: {
+          platformFeePaid: true,
+          attendeeCap: webhookMeta.tierCap ?? null,
+          platformFeeAmount: previouslyPaid + paidKes,
+        },
       });
     }
     return NextResponse.json({ received: true });
@@ -86,7 +104,7 @@ export async function POST(req: Request) {
           buyer: true,
           ticketCategory: {
             include: {
-              event: true,
+              event: { select: { id: true, title: true, date: true, endDate: true, venue: true, city: true, experienceType: true } },
               installmentPlan: { include: { scheduleItems: true } },
             },
           },
@@ -110,7 +128,7 @@ export async function POST(req: Request) {
       where: { id: { in: orderIds } },
       include: {
         buyer: true,
-        ticketCategory: { include: { event: true } },
+        ticketCategory: { include: { event: { select: { id: true, title: true, date: true, endDate: true, venue: true, city: true, experienceType: true } } } },
         payments: { orderBy: { paymentNumber: "asc" } },
         tickets: true,
       },
@@ -136,6 +154,8 @@ export async function POST(req: Request) {
         .toUpperCase()
         .slice(0, 4);
 
+      const isGroupTrip = cartEvent.experienceType === "GROUP_TRIP";
+
       for (const order of cartOrders) {
         const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
         if (initialPayment && initialPayment.status !== "PAID") {
@@ -155,7 +175,8 @@ export async function POST(req: Request) {
           data: { soldQuantity: { increment: order.quantity } },
         });
 
-        if (order.tickets.length === 0) {
+        // Skip ticket/QR generation for group trips
+        if (!isGroupTrip && order.tickets.length === 0) {
           const numbers: string[] = [];
           for (let i = 0; i < order.quantity; i++) {
             const ticketNumber = generateTicketNumber(prefix);
@@ -177,15 +198,34 @@ export async function POST(req: Request) {
       return result;
     });
 
+    const eventDate = format(cartEvent.date, "EEEE, dd MMMM yyyy · HH:mm");
+    const venue = `${cartEvent.venue}${cartEvent.city ? `, ${cartEvent.city}` : ""}`;
+    const isGroupTrip = cartEvent.experienceType === "GROUP_TRIP";
+
     try {
-      await sendCartConfirmation({
-        to: cartBuyer.email,
-        name: cartBuyer.name ?? "there",
-        eventTitle: cartEvent.title,
-        eventDate: format(cartEvent.date, "EEEE, dd MMMM yyyy · HH:mm"),
-        venue: `${cartEvent.venue}${cartEvent.city ? `, ${cartEvent.city}` : ""}`,
-        categories: ticketsByCategory,
-      });
+      if (isGroupTrip) {
+        const totalPaid = cartOrders.reduce((s, o) => s + Number(o.totalAmount), 0);
+        await sendBookingConfirmation({
+          to: cartBuyer.email,
+          name: cartBuyer.name ?? "there",
+          eventTitle: cartEvent.title,
+          categoryName: cartOrders.map((o) => o.ticketCategory.name).join(", "),
+          quantity: cartOrders.reduce((s, o) => s + o.quantity, 0),
+          totalAmount: totalPaid,
+          paidAmount: totalPaid,
+          eventDate,
+          venue,
+        });
+      } else {
+        await sendCartConfirmation({
+          to: cartBuyer.email,
+          name: cartBuyer.name ?? "there",
+          eventTitle: cartEvent.title,
+          eventDate,
+          venue,
+          categories: ticketsByCategory,
+        });
+      }
     } catch (err) {
       console.error("[webhook] cart email threw:", err);
     }
@@ -273,8 +313,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Generate tickets only on first payment
-    if (!isFollowOnPayment && order.tickets.length === 0) {
+    // Generate tickets only on first payment, and only for non-GROUP_TRIP experiences
+    if (!isFollowOnPayment && order.tickets.length === 0 && event_.experienceType !== "GROUP_TRIP") {
       const prefix = event_.title
         .split(" ")
         .map((w) => w[0])
@@ -327,7 +367,19 @@ export async function POST(req: Request) {
     const eventDate = format(event_.date, "EEEE, dd MMMM yyyy · HH:mm");
     const venue = `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`;
 
-    if (isFullyPaid) {
+    if (event_.experienceType === "GROUP_TRIP") {
+      await sendBookingConfirmation({
+        to: buyer.email,
+        name: buyer.name ?? "there",
+        eventTitle: event_.title,
+        categoryName: ticketCategory.name,
+        quantity: order.quantity,
+        totalAmount: Number(order.totalAmount),
+        paidAmount: Number(updatedOrder.paidAmount),
+        eventDate,
+        venue,
+      });
+    } else if (isFullyPaid) {
       await sendTicketConfirmation({
         to: buyer.email,
         name: buyer.name ?? "there",

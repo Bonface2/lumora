@@ -45,10 +45,11 @@ let _ticketRevocationQueue: Queue | null = null;
 
 function getConnection(): IORedis {
   if (!_connection) {
-    _connection = new IORedis(
-      process.env.REDIS_URL ?? "redis://localhost:6379",
-      { maxRetriesPerRequest: null }
-    );
+    const url = process.env.REDIS_URL ?? "redis://localhost:6379";
+    _connection = new IORedis(url, {
+      maxRetriesPerRequest: null,
+      ...(url.startsWith("rediss://") && { tls: {} }),
+    });
   }
   return _connection;
 }
