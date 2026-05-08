@@ -98,7 +98,7 @@ function shell({
             ${footerNote ? `
             <p style="margin:0 0 10px;font-size:12px;color:#94a3b8;text-align:center;">${footerNote}</p>
             ` : ""}
-            <p style="margin:0;font-size:11px;color:#475569;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#cbd5e1;font-weight:600;text-align:center;letter-spacing:0.01em;">
               All payments are non-refundable.
             </p>
             <p style="margin:8px 0 0;font-size:11px;color:#334155;text-align:center;">
