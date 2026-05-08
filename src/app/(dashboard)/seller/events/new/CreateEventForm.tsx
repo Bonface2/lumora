@@ -2,7 +2,7 @@
 
 import { useFieldArray, useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
 import { ImageUpload } from "@/components/ui/ImageUpload";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { createEvent, updateEvent } from "@/app/actions/events";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { TicketCategoryFields } from "./TicketCategoryFields";
@@ -21,6 +22,7 @@ interface Props {
   defaultValues?: CreateEventFormData;
   payoutMethods: PayoutMethodData[];
   payoutMethodLocked?: boolean;
+  eventType?: "FREE" | "PAID";
 }
 
 const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
@@ -46,18 +48,24 @@ function methodDisplay(m: PayoutMethodData) {
   return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
 }
 
-export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false }: Props) {
+export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp }: Props) {
   const isEdit = Boolean(eventId);
   const router = useRouter();
   const [serverError, setServerError] = useState("");
   const [localMethods, setLocalMethods] = useState<PayoutMethodData[]>(payoutMethods);
   const [showPayoutForm, setShowPayoutForm] = useState(false);
 
+  // For editing, read eventType from defaultValues; for new events, use prop
+  const resolvedEventType = (defaultValues?.eventType ?? eventTypeProp ?? "PAID") as "FREE" | "PAID";
+  const isFree = resolvedEventType === "FREE";
+
   const methods = useForm<CreateEventFormData, unknown, CreateEventFormData>({
     resolver: zodResolver(isEdit ? editEventSchema : createEventSchema),
     defaultValues: defaultValues ?? {
       ticketCategories: [{ ...BLANK_CATEGORY }],
       payoutMethodId: payoutMethods.length === 1 ? payoutMethods[0].id : "",
+      eventType: resolvedEventType,
+      isPrivate: false,
     },
   });
 
@@ -70,12 +78,18 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
     formState: { errors, isSubmitting },
   } = methods;
 
+  // Sync eventType into form value
+  useEffect(() => {
+    setValue("eventType", resolvedEventType);
+  }, [resolvedEventType, setValue]);
+
   const { fields, append, remove } = useFieldArray({
     control,
     name: "ticketCategories",
   });
 
   const selectedMethodId = watch("payoutMethodId");
+  const isPrivate = watch("isPrivate");
 
   async function onSubmit(data: CreateEventFormData) {
     setServerError("");
@@ -86,7 +100,11 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       setServerError(res.error);
       return;
     }
-    router.push(`/seller/events/${res.data.id}`);
+    if (!isEdit && data.eventType === "FREE") {
+      router.push(`/seller/events/${res.data.id}/activate`);
+    } else {
+      router.push(`/seller/events/${res.data.id}`);
+    }
   }
 
   const cancelHref = isEdit ? `/seller/events/${eventId}` : "/seller";
@@ -94,6 +112,9 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
   return (
     <FormProvider {...methods}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Hidden fields */}
+        <input type="hidden" {...register("eventType")} />
+
         {serverError && (
           <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
             {serverError}
@@ -129,21 +150,22 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="date" required>Start date &amp; time</Label>
-                <Input
-                  id="date"
-                  type="datetime-local"
+                <Label required>Start date &amp; time</Label>
+                <DateTimePicker
+                  value={watch("date")}
+                  onChange={(v) => setValue("date", v)}
+                  placeholder="Pick start date & time"
                   error={errors.date?.message}
-                  {...register("date")}
                 />
               </div>
               <div>
-                <Label htmlFor="endDate">End date &amp; time</Label>
-                <Input
-                  id="endDate"
-                  type="datetime-local"
+                <Label>End date &amp; time</Label>
+                <DateTimePicker
+                  value={watch("endDate") ?? ""}
+                  onChange={(v) => setValue("endDate", v)}
+                  minDateTime={watch("date") || undefined}
+                  placeholder="Pick end date & time"
                   error={errors.endDate?.message}
-                  {...register("endDate")}
                 />
               </div>
             </div>
@@ -175,131 +197,151 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                 />
               </div>
             </div>
+
+            {/* Private toggle */}
+            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  {...register("isPrivate")}
+                />
+                <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+              </label>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Private experience</p>
+                <p className="text-xs text-gray-500">
+                  {isPrivate
+                    ? "Only accessible to people with the direct link. Not listed on the public events page."
+                    : "Publicly listed on the events page. Anyone can discover and register."}
+                </p>
+              </div>
+            </div>
           </CardBody>
         </Card>
 
-        {/* Payout method */}
-        <Card>
-          <CardHeader>
-            <h2 className="font-semibold text-gray-900">Payout method</h2>
-          </CardHeader>
-          <CardBody>
-            <p className="mb-1 text-sm text-gray-500">
-              Choose where ticket sales revenue will be sent for this event.
-            </p>
-            <p className="mb-3 text-xs text-gray-400">
-              This cannot be changed once any payment has been received.
-            </p>
+        {/* Payout method — hidden for free events */}
+        {!isFree && (
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-gray-900">Payout method</h2>
+            </CardHeader>
+            <CardBody>
+              <p className="mb-1 text-sm text-gray-500">
+                Choose where ticket sales revenue will be sent for this event.
+              </p>
+              <p className="mb-3 text-xs text-gray-400">
+                This cannot be changed once any payment has been received.
+              </p>
 
-            {payoutMethodLocked ? (
-              /* Locked — payments already received, method cannot change */
-              (() => {
-                const locked = localMethods.find((m) => m.id === selectedMethodId);
-                return (
-                  <div className="space-y-2">
-                    {locked && (
-                      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              {payoutMethodLocked ? (
+                (() => {
+                  const locked = localMethods.find((m) => m.id === selectedMethodId);
+                  return (
+                    <div className="space-y-2">
+                      {locked && (
+                        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-gray-900">{locked.paystackBankName}</span>
+                              {locked.label && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
+                                  {locked.label}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 text-sm text-gray-500">{methodDisplay(locked)}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            Locked
+                          </div>
+                          <input type="hidden" {...register("payoutMethodId")} />
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        Payout method cannot be changed once payments have been received for this event.
+                      </p>
+                    </div>
+                  );
+                })()
+              ) : (
+                <>
+              {localMethods.length > 0 && (
+                <div className="space-y-2">
+                  {localMethods.map((m) => {
+                    const checked = selectedMethodId === m.id;
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                          checked
+                            ? "border-primary-500 bg-primary-50"
+                            : "border-gray-200 bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          value={m.id}
+                          {...register("payoutMethodId")}
+                          className="h-4 w-4 accent-primary-600"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-gray-900">{locked.paystackBankName}</span>
-                            {locked.label && (
+                            <span className="font-semibold text-gray-900">{m.paystackBankName}</span>
+                            {m.label && (
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
-                                {locked.label}
+                                {m.label}
+                              </span>
+                            )}
+                            {MOBILE_MONEY_TYPES.has(m.bankType) && (
+                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">
+                                Mobile money
                               </span>
                             )}
                           </div>
-                          <p className="mt-0.5 text-sm text-gray-500">{methodDisplay(locked)}</p>
+                          <p className="mt-0.5 text-sm text-gray-500">{methodDisplay(m)}</p>
                         </div>
-                        <div className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                          </svg>
-                          Locked
-                        </div>
-                        {/* keep value in form */}
-                        <input type="hidden" {...register("payoutMethodId")} />
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-400">
-                      Payout method cannot be changed once payments have been received for this event.
-                    </p>
-                  </div>
-                );
-              })()
-            ) : (
-              <>
-            {localMethods.length > 0 && (
-              <div className="space-y-2">
-                {localMethods.map((m) => {
-                  const checked = selectedMethodId === m.id;
-                  return (
-                    <label
-                      key={m.id}
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
-                        checked
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200 bg-white hover:border-gray-300"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        value={m.id}
-                        {...register("payoutMethodId")}
-                        className="h-4 w-4 accent-primary-600"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-gray-900">{m.paystackBankName}</span>
-                          {m.label && (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
-                              {m.label}
-                            </span>
-                          )}
-                          {MOBILE_MONEY_TYPES.has(m.bankType) && (
-                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">
-                              Mobile money
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-0.5 text-sm text-gray-500">{methodDisplay(m)}</p>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
 
-            {showPayoutForm ? (
-              <div className={localMethods.length > 0 ? "mt-3" : ""}>
-                <PayoutMethodForm
-                  onSaved={(newMethod) => {
-                    setLocalMethods((prev) => [...prev, newMethod]);
-                    setValue("payoutMethodId", newMethod.id, { shouldValidate: true });
-                    setShowPayoutForm(false);
-                  }}
-                  onCancel={() => setShowPayoutForm(false)}
-                />
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowPayoutForm(true)}
-                className={`flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-700 ${localMethods.length > 0 ? "mt-3" : ""}`}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-                {localMethods.length === 0 ? "Add a payout method" : "Add another method"}
-              </button>
-            )}
+              {showPayoutForm ? (
+                <div className={localMethods.length > 0 ? "mt-3" : ""}>
+                  <PayoutMethodForm
+                    onSaved={(newMethod) => {
+                      setLocalMethods((prev) => [...prev, newMethod]);
+                      setValue("payoutMethodId", newMethod.id, { shouldValidate: true });
+                      setShowPayoutForm(false);
+                    }}
+                    onCancel={() => setShowPayoutForm(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPayoutForm(true)}
+                  className={`flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-700 ${localMethods.length > 0 ? "mt-3" : ""}`}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  {localMethods.length === 0 ? "Add a payout method" : "Add another method"}
+                </button>
+              )}
 
-            {errors.payoutMethodId && !showPayoutForm && (
-              <p className="mt-2 text-sm text-red-600">{errors.payoutMethodId.message}</p>
-            )}
-              </>
-            )}
-          </CardBody>
-        </Card>
+              {errors.payoutMethodId && !showPayoutForm && (
+                <p className="mt-2 text-sm text-red-600">{errors.payoutMethodId.message}</p>
+              )}
+                </>
+              )}
+            </CardBody>
+          </Card>
+        )}
 
         {/* Ticket categories */}
         <div>
@@ -307,7 +349,9 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
             <div>
               <h2 className="font-semibold text-gray-900">Ticket categories</h2>
               <p className="text-sm text-gray-500">
-                Add one or more ticket tiers (e.g. Regular, VIP)
+                {isFree
+                  ? "Add one or more ticket tiers (e.g. General, VIP). Prices are locked at free."
+                  : "Add one or more ticket tiers (e.g. Regular, VIP)"}
               </p>
             </div>
             <Button
@@ -337,6 +381,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                 key={field.id}
                 index={index}
                 onRemove={fields.length > 1 ? () => remove(index) : undefined}
+                isFreeEvent={isFree}
               />
             ))}
           </div>

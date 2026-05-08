@@ -31,6 +31,15 @@ const nav = [
       </svg>
     ),
   },
+  {
+    label: "Profile",
+    href: "/buyer/profile",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  },
 ];
 
 export function BuyerSidebar() {
@@ -46,8 +55,7 @@ export function BuyerSidebar() {
       {/* Logo */}
       <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
         <a href="/" className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
-          <span className="text-base font-black tracking-tight text-white">Lumora</span>
+          <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         </a>
         <span className="rounded-full bg-primary-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-400 border border-primary-800">
           Buyer

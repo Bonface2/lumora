@@ -42,6 +42,10 @@ export default async function SellerEventsPage() {
     (s, e) => s + e.ticketCategories.reduce((a, c) => a + c.totalQuantity, 0), 0
   );
 
+  const payoutMethodCount = await db.payoutMethod.count({
+    where: { sellerId: session!.user.id },
+  });
+
   return (
     <div className="min-h-full bg-gray-50 font-sans">
       {/* ── Vibrant header ── */}
@@ -111,6 +115,27 @@ export default async function SellerEventsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── KYC / payout method notice ── */}
+      {payoutMethodCount === 0 && (
+        <div className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 sm:mx-6 md:mx-8">
+          <svg className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-800">Add a payout method to receive earnings</p>
+            <p className="mt-0.5 text-sm text-amber-700">
+              Paystack requires identity verification before settling funds. Add a bank account or M-PESA number in Settings so payouts aren&apos;t held after your event.
+            </p>
+          </div>
+          <Link
+            href="/seller/settings"
+            className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors"
+          >
+            Go to Settings
+          </Link>
+        </div>
+      )}
 
       {/* ── Grid ── */}
       <div className="p-4 sm:p-6 md:p-8">

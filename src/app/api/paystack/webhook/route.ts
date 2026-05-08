@@ -13,10 +13,9 @@ import { format } from "date-fns";
 export const dynamic = "force-dynamic";
 
 function generateTicketNumber(prefix: string): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const random = Array.from({ length: 8 }, () =>
-    chars[Math.floor(Math.random() * chars.length)]
-  ).join("");
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 chars — divides 256 evenly, no modulo bias
+  const bytes = crypto.randomBytes(8);
+  const random = Array.from(bytes, (b) => chars[b % chars.length]).join("");
   return `${prefix}-${random}`;
 }
 
@@ -56,6 +55,29 @@ export async function POST(req: Request) {
   const { reference, amount } = event.data;
   const amountNaira = amount / 100;
 
+  // Check if this is a free event activation fee (handled before transaction lookup)
+  const webhookMeta = event.data.metadata as { type?: string; eventId?: string } | null;
+  if (webhookMeta?.type === "free_event_fee" && webhookMeta?.eventId) {
+    if (Number(event.data.amount) >= 100000) {
+      await db.event.update({
+        where: { id: webhookMeta.eventId },
+        data: { platformFeePaid: true },
+      });
+    }
+    return NextResponse.json({ received: true });
+  }
+
+  // Atomic idempotency guard: only the first concurrent delivery claiming
+  // status "pending" → "processing" will proceed. Subsequent Paystack retries
+  // (or duplicate deliveries) see count=0 and exit immediately.
+  const claimed = await db.paystackTransaction.updateMany({
+    where: { reference, status: "pending" },
+    data: { status: "processing" },
+  });
+  if (claimed.count === 0) {
+    return NextResponse.json({ received: true });
+  }
+
   const transaction = await db.paystackTransaction.findUnique({
     where: { reference },
     include: {
@@ -75,7 +97,7 @@ export async function POST(req: Request) {
     },
   });
 
-  if (!transaction || transaction.status === "success") {
+  if (!transaction) {
     return NextResponse.json({ received: true });
   }
 

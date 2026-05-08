@@ -1,8 +1,27 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
+import { Footer } from "@/components/layouts/Footer";
+
+const getCachedHomeEvents = unstable_cache(
+  () =>
+    db.event.findMany({
+      where: { status: "PUBLISHED" },
+      include: {
+        ticketCategories: {
+          select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
+          orderBy: { price: "asc" },
+        },
+      },
+      orderBy: { date: "asc" },
+      take: 8,
+    }),
+  ["home-events"],
+  { revalidate: 60 }
+);
 
 export default async function HomePage() {
   const session = await auth();
@@ -11,37 +30,16 @@ export default async function HomePage() {
     redirect(session.user.role === "SELLER" ? "/seller" : session.user.role === "ADMIN" ? "/admin" : "/buyer");
   }
 
-  const events = await db.event.findMany({
-    where: { status: "PUBLISHED" },
-    include: {
-      ticketCategories: {
-        select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
-        orderBy: { price: "asc" },
-      },
-    },
-    orderBy: { date: "asc" },
-    take: 8,
-  });
+  const events = await getCachedHomeEvents();
 
   return (
     <main className="min-h-screen bg-white font-sans">
       {/* ── Nav ── */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
-          <span className="text-lg font-black tracking-tight text-gray-900">Lumora</span>
+        <Link href="/" className="flex items-center">
+          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         </Link>
-
-        {/* Center links */}
-        <div className="hidden items-center gap-6 md:flex">
-          <Link href="/events" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            Explore
-          </Link>
-          <Link href="/register?role=seller" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            List an experience
-          </Link>
-        </div>
 
         {/* Right: login button */}
         <Link
@@ -244,12 +242,7 @@ export default async function HomePage() {
         </Link>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="border-t border-gray-100 px-6 py-8 text-center">
-        <p className="text-xs text-gray-400">
-          © {new Date().getFullYear()} Lumora. All rights reserved.
-        </p>
-      </footer>
+      <Footer />
     </main>
   );
 }

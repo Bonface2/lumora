@@ -3,11 +3,17 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum EventType {
+  FREE
+  PAID
+}
 
 enum Role {
   BUYER
@@ -61,9 +67,11 @@ model User {
   role          Role      @default(BUYER)
   emailVerified DateTime?
   image         String?
-  phone         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  phone           String?
+  ageConfirmed    Boolean   @default(false)
+  marketingEmails Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   accounts        Account[]
   sessions        Session[]
@@ -131,6 +139,9 @@ model Event {
   city        String?
   coverImage  String?
   status             EventStatus @default(DRAFT)
+  eventType          EventType   @default(PAID)
+  isPrivate          Boolean     @default(false)
+  platformFeePaid    Boolean     @default(false)
   platformFeePercent Decimal?    @db.Decimal(5, 2)
   payoutMethodId     String?
   createdAt          DateTime    @default(now())
@@ -139,8 +150,24 @@ model Event {
   seller           User             @relation(fields: [sellerId], references: [id])
   payoutMethod     PayoutMethod?    @relation(fields: [payoutMethodId], references: [id])
   ticketCategories TicketCategory[]
+  invites          EventInvite[]
 
+  @@index([sellerId])
+  @@index([status])
   @@map("events")
+}
+
+model EventInvite {
+  id        String    @id @default(cuid())
+  eventId   String
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  email     String
+  name      String?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([eventId, email])
+  @@map("event_invites")
 }
 
 model TicketCategory {
@@ -152,6 +179,7 @@ model TicketCategory {
   totalQuantity     Int
   soldQuantity      Int      @default(0)
   allowInstallments Boolean  @default(false)
+  isComplimentary   Boolean  @default(false)
   sortOrder         Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -215,6 +243,9 @@ model Order {
   payments       InstallmentPayment[]
   transactions   PaystackTransaction[]
 
+  @@index([buyerId])
+  @@index([ticketCategoryId])
+  @@index([status])
   @@map("orders")
 }
 
@@ -233,6 +264,8 @@ model Ticket {
   order         Order          @relation(fields: [orderId], references: [id])
   resaleListing ResaleListing?
 
+  @@index([orderId])
+  @@index([currentOwnerId])
   @@map("tickets")
 }
 
@@ -256,6 +289,9 @@ model InstallmentPayment {
   scheduleItem InstallmentScheduleItem? @relation(fields: [installmentScheduleItemId], references: [id])
   transactions PaystackTransaction[]
 
+  @@index([orderId])
+  @@index([status])
+  @@index([dueDate])
   @@map("installment_payments")
 }
 
@@ -337,5 +373,7 @@ model ResaleListing {
   seller User   @relation(fields: [sellerId], references: [id])
   buyer  User?  @relation("resale_purchases", fields: [buyerId], references: [id])
 
+  @@index([sellerId])
+  @@index([status])
   @@map("resale_listings")
 }

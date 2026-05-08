@@ -22,6 +22,13 @@ const schema = z
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
     role: z.enum(["BUYER", "SELLER"]),
+    terms: z.boolean().refine((v) => v === true, {
+      message: "You must accept the terms to continue",
+    }),
+    ageConfirmed: z.boolean().refine((v) => v === true, {
+      message: "You must confirm you are 18 or older",
+    }),
+    marketingEmails: z.boolean().optional(),
   })
   .refine((d) => d.password === d.confirmPassword, {
     message: "Passwords do not match",
@@ -45,10 +52,13 @@ function RegisterForm() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: initialRole },
+    defaultValues: { role: initialRole, terms: false, ageConfirmed: false, marketingEmails: false },
   });
 
   const role = watch("role");
+  const termsAccepted = watch("terms");
+  const ageAccepted = watch("ageConfirmed");
+  const googleReady = termsAccepted && ageAccepted;
 
   async function onSubmit(data: FormData) {
     setServerError("");
@@ -91,13 +101,19 @@ function RegisterForm() {
           ))}
         </div>
 
+        {!googleReady && (
+          <p className="mb-2 text-center text-xs text-amber-600">
+            Accept the terms &amp; conditions and confirm your age below before continuing with Google.
+          </p>
+        )}
         <button
           type="button"
+          disabled={!googleReady}
           onClick={async () => {
             await setPendingRoleCookie(role);
             signIn("google", { callbackUrl });
           }}
-          className="mb-4 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          className="mb-4 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -176,6 +192,57 @@ function RegisterForm() {
               error={errors.confirmPassword?.message}
               {...register("confirmPassword")}
             />
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                id="terms"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-primary-600 cursor-pointer"
+                {...register("terms")}
+              />
+              <span className="text-sm text-gray-600">
+                I have read and agree to the{" "}
+                <a href="/terms" target="_blank" className="font-semibold text-primary-600 hover:underline">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="/privacy" target="_blank" className="font-semibold text-primary-600 hover:underline">
+                  Privacy Policy
+                </a>
+              </span>
+            </label>
+            {errors.terms && (
+              <p className="-mt-1 text-xs text-red-600">{errors.terms.message}</p>
+            )}
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                id="ageConfirmed"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-primary-600 cursor-pointer"
+                {...register("ageConfirmed")}
+              />
+              <span className="text-sm text-gray-600">
+                I confirm I am <span className="font-semibold">18 years or older</span>
+              </span>
+            </label>
+            {errors.ageConfirmed && (
+              <p className="-mt-1 text-xs text-red-600">{errors.ageConfirmed.message}</p>
+            )}
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                id="marketingEmails"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-primary-600 cursor-pointer"
+                {...register("marketingEmails")}
+              />
+              <span className="text-sm text-gray-600">
+                Send me updates about new events and experiences <span className="text-gray-400">(optional)</span>
+              </span>
+            </label>
           </div>
 
           <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>

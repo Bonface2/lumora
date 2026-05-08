@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import QRCode from "qrcode";
+import { getUnsubscribeToken } from "@/lib/unsubscribe";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
@@ -22,6 +23,7 @@ function shell({
   accentColor = "#0f9699",
   body,
   footerNote,
+  userId,
 }: {
   preheader: string;
   headline: string;
@@ -29,6 +31,7 @@ function shell({
   accentColor?: string;
   body: string;
   footerNote?: string;
+  userId?: string;
 }) {
   const year = new Date().getFullYear();
   return `<!DOCTYPE html>
@@ -101,6 +104,10 @@ function shell({
             <p style="margin:8px 0 0;font-size:11px;color:#334155;text-align:center;">
               © ${year} Lumora · Secure ticketing platform
             </p>
+            ${userId ? `
+            <p style="margin:8px 0 0;font-size:10px;color:#334155;text-align:center;">
+              <a href="${process.env.NEXTAUTH_URL}/api/unsubscribe?uid=${userId}&token=${getUnsubscribeToken(userId)}" style="color:#475569;text-decoration:underline;">Unsubscribe from marketing emails</a>
+            </p>` : ""}
           </td>
         </tr>
 
@@ -411,7 +418,7 @@ export async function sendInstallmentReceipt({
 
   const scheduleRows = remainingPayments
     .map(
-      (p, i) => `
+      (p) => `
     <tr>
       <td style="padding:10px 0;border-top:1px solid #e0f7f7;font-size:13px;color:#475569;">
         Installment ${p.installmentNumber}
@@ -640,6 +647,52 @@ export async function sendDefaultWarning({
 /* ═══════════════════════════════════════════════════════════════════════════
    4. Ticket revocation notice
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   5. Event invite (private events)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendEventInvite(
+  to: string,
+  name: string | null,
+  event: { title: string; date: string; venue: string; slug: string }
+) {
+  const greeting = name ? `Hi ${name},` : "Hi there,";
+  const eventUrl = `${process.env.NEXTAUTH_URL}/events/${event.slug}`;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      You're invited!
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      ${greeting} You've been personally invited to attend a private experience on Lumora.
+    </p>
+
+    ${infoCard([
+      { label: "Event", value: event.title },
+      { label: "Date",  value: event.date },
+      { label: "Venue", value: event.venue },
+    ])}
+
+    <p style="margin:24px 0 16px;font-size:13px;color:#64748b;line-height:1.5;">
+      This is a private event — use the button below to view details and register.
+    </p>
+
+    ${ctaButton("View &amp; Register", eventUrl)}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `You're invited to ${event.title}`,
+    html: shell({
+      preheader: `You've been invited to ${event.title} — a private experience on Lumora.`,
+      headline: event.title,
+      label: "Private invitation",
+      body,
+    }),
+  });
+}
 
 export async function sendTicketRevocationNotice({
   to,

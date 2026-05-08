@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PublishButton } from "./PublishButton";
+import { CompTicketForm } from "@/components/CompTicketForm";
+import { InviteForm } from "@/components/InviteForm";
 import type { EventStatus } from "@prisma/client";
 
 const statusConfig: Record<EventStatus, { label: string; cls: string }> = {
@@ -21,21 +23,37 @@ export default async function SellerEventDetailPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const event = await db.event.findFirst({
-    where: { id, sellerId: session.user.id },
-    include: {
-      ticketCategories: {
-        include: { installmentPlan: { include: { scheduleItems: true } } },
-        orderBy: { sortOrder: "asc" },
+  const [event, compOrders, invites] = await Promise.all([
+    db.event.findFirst({
+      where: { id, sellerId: session.user.id },
+      include: {
+        ticketCategories: {
+          include: { installmentPlan: { include: { scheduleItems: true } } },
+          orderBy: { sortOrder: "asc" },
+        },
       },
-    },
-  });
+    }),
+    db.order.findMany({
+      where: { ticketCategory: { eventId: id, isComplimentary: true } },
+      include: {
+        buyer: { select: { name: true, email: true } },
+        ticketCategory: { select: { name: true } },
+        tickets: { select: { ticketNumber: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.eventInvite.findMany({
+      where: { eventId: id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
   if (!event) notFound();
 
-  const totalSold = event.ticketCategories.reduce((s, c) => s + c.soldQuantity, 0);
-  const totalAvail = event.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
-  const totalRevenue = event.ticketCategories.reduce(
+  const paidCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
+  const totalSold = paidCategories.reduce((s, c) => s + c.soldQuantity, 0);
+  const totalAvail = paidCategories.reduce((s, c) => s + c.totalQuantity, 0);
+  const totalRevenue = paidCategories.reduce(
     (s, c) => s + Number(c.price) * c.soldQuantity, 0
   );
   const salesPct = totalAvail > 0 ? Math.round((totalSold / totalAvail) * 100) : 0;
@@ -151,7 +169,18 @@ export default async function SellerEventDetailPage({
                 </button>
               </a>
               {(event.status === "DRAFT" || event.status === "PUBLISHED") && (
-                <PublishButton eventId={id} status={event.status} />
+                event.eventType === "FREE" && !event.platformFeePaid ? (
+                  <a href={`/seller/events/${id}/activate`}>
+                    <button className="flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-400/20 transition-colors">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Activate (KES 1,000)
+                    </button>
+                  </a>
+                ) : (
+                  <PublishButton eventId={id} status={event.status} />
+                )
               )}
             </div>
           </div>
@@ -165,7 +194,7 @@ export default async function SellerEventDetailPage({
         <div className="lg:col-span-2 space-y-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Ticket categories</h2>
 
-          {event.ticketCategories.map((cat) => {
+          {paidCategories.map((cat) => {
             const catPct = cat.totalQuantity > 0
               ? Math.round((cat.soldQuantity / cat.totalQuantity) * 100)
               : 0;
@@ -305,6 +334,36 @@ export default async function SellerEventDetailPage({
           </div>
         </div>
       </div>
+
+      {/* ── Complimentary tickets ── */}
+      <div className="px-8 pb-8">
+        <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">Complimentary tickets</h2>
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <p className="mb-4 text-sm text-gray-500">
+            Generate free tickets for specific recipients. They will receive the ticket QR code by email.
+          </p>
+          <CompTicketForm
+            eventId={id}
+            initialCategories={event.ticketCategories
+              .filter((c) => c.isComplimentary)
+              .map((c) => ({ id: c.id, name: c.name, totalQuantity: c.totalQuantity, soldQuantity: c.soldQuantity }))}
+            initialOrders={compOrders}
+          />
+        </div>
+      </div>
+
+      {/* ── Invite guests (private events only) ── */}
+      {event.isPrivate && (
+        <div className="px-8 pb-8">
+          <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">Invite guests</h2>
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <p className="mb-4 text-sm text-gray-500">
+              This is a private event. Send personalised email invitations with the direct event link.
+            </p>
+            <InviteForm eventId={id} initialInvites={invites} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

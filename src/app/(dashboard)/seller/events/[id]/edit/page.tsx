@@ -44,6 +44,8 @@ export default async function EditEventPage({
     city: event.city ?? "",
     coverImage: event.coverImage ?? "",
     payoutMethodId: event.payoutMethodId ?? (payoutMethods.length === 1 ? payoutMethods[0].id : ""),
+    eventType: (event.eventType as "FREE" | "PAID") ?? "PAID",
+    isPrivate: event.isPrivate ?? false,
     ticketCategories: event.ticketCategories.map((cat) => ({
       id: cat.id,
       name: cat.name,
@@ -67,7 +69,7 @@ export default async function EditEventPage({
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="mx-auto max-w-3xl p-8">
       <div className="mb-6">
         <a href={`/seller/events/${id}`} className="text-sm text-primary-600 hover:underline">
           ← Back to event

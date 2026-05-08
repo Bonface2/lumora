@@ -4,7 +4,6 @@ import { format } from "date-fns";
 import Link from "next/link";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { InstallmentPaymentStatus } from "@prisma/client";
-
 const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
   PENDING: { label: "Pending", cls: "bg-gray-100 text-gray-600" },
   PARTIAL_PAID: { label: "Installments", cls: "bg-amber-100 text-amber-700" },
@@ -379,6 +378,7 @@ export default async function BuyerTicketsPage({
           </div>
         )}
       </div>
+
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import Link from "next/link";
 import { PurchaseSection } from "./PurchaseSection";
 import { NavUserSidebar } from "@/components/landing/NavUserSidebar";
+import { Footer } from "@/components/layouts/Footer";
 
 export async function generateMetadata({
   params,
@@ -37,11 +38,13 @@ export default async function PublicEventPage({
 
   if (!event) notFound();
 
-  const isSoldOut = event.ticketCategories.every(
+  const publicCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
+
+  const isSoldOut = publicCategories.every(
     (c) => c.soldQuantity >= c.totalQuantity
   );
 
-  const lowestPrice = event.ticketCategories.reduce(
+  const lowestPrice = publicCategories.reduce(
     (min, c) => Math.min(min, Number(c.price)),
     Infinity
   );
@@ -53,10 +56,7 @@ export default async function PublicEventPage({
       {/* ── Sticky nav ── */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
-            <span className="text-sm font-black text-white tracking-tight">L</span>
-          </div>
-          <span className="text-lg font-black tracking-tight text-gray-900">Lumora</span>
+          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         </Link>
 
         <div className="flex items-center gap-3">
@@ -278,6 +278,7 @@ export default async function PublicEventPage({
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

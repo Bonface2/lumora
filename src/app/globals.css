@@ -13,6 +13,7 @@
   --color-primary-900: #134a4d;
 
   --font-sans: var(--font-montserrat), system-ui, sans-serif;
+  --font-display: var(--font-playfair), Georgia, serif;
 }
 
 :root {

@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { checkLoginRateLimit } from "@/app/actions/auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,6 +32,10 @@ function LoginForm() {
 
   async function onSubmit(data: FormData) {
     setServerError("");
+
+    const rl = await checkLoginRateLimit();
+    if (!rl.ok) { setServerError(rl.error); return; }
+
     const res = await signIn("credentials", {
       email: data.email,
       password: data.password,

@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
-import { Montserrat } from "next/font/google";
+import { CookieBanner } from "@/components/CookieBanner";
+import { Montserrat, Cormorant_Garamond } from "next/font/google";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
   variable: "--font-montserrat",
   weight: ["300", "400", "500", "600", "700", "800", "900"],
+  display: "swap",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  variable: "--font-playfair",
+  weight: ["600", "700"],
   display: "swap",
 });
 
@@ -26,8 +34,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${montserrat.variable} antialiased`}>
+      <body className={`${montserrat.variable} ${cormorant.variable} antialiased`}>
         <Providers>{children}</Providers>
+        <CookieBanner />
       </body>
     </html>
   );

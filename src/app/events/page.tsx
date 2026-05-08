@@ -1,22 +1,31 @@
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { unstable_cache } from "next/cache";
 import { format } from "date-fns";
 import Link from "next/link";
 import { NavUserSidebar } from "@/components/landing/NavUserSidebar";
+import { Footer } from "@/components/layouts/Footer";
+
+const getCachedEvents = unstable_cache(
+  () =>
+    db.event.findMany({
+      where: { status: "PUBLISHED", isPrivate: false },
+      include: {
+        ticketCategories: {
+          select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
+          orderBy: { price: "asc" },
+        },
+      },
+      orderBy: { date: "asc" },
+    }),
+  ["all-events"],
+  { revalidate: 60 }
+);
 
 export default async function EventsPage() {
   const session = await auth();
 
-  const events = await db.event.findMany({
-    where: { status: "PUBLISHED" },
-    include: {
-      ticketCategories: {
-        select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
-        orderBy: { price: "asc" },
-      },
-    },
-    orderBy: { date: "asc" },
-  });
+  const events = await getCachedEvents();
 
   const dashboardHref = session?.user?.role === "SELLER" ? "/seller" : "/buyer";
 
@@ -24,19 +33,9 @@ export default async function EventsPage() {
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
-        <Link href="/" className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
-          <span className="text-lg font-black tracking-tight text-gray-900">Lumora</span>
+        <Link href="/" className="flex items-center">
+          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         </Link>
-
-        <div className="hidden items-center gap-6 md:flex">
-          <Link href="/events" className="text-sm font-semibold text-primary-600">
-            Explore
-          </Link>
-          <Link href="/register?role=seller" className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors">
-            List an experience
-          </Link>
-        </div>
 
         {session?.user ? (
           <NavUserSidebar user={session.user} dashboardHref={dashboardHref!} />
@@ -167,6 +166,7 @@ export default async function EventsPage() {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   );
 }

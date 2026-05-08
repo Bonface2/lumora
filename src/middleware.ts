@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const SELLER_PATHS = ["/seller"];
 const BUYER_PATHS = ["/buyer"];
+const ADMIN_PATHS = ["/admin"];
 const AUTH_PATHS = ["/login", "/register"];
 
 export default auth((req) => {
@@ -29,6 +30,15 @@ export default auth((req) => {
   if (BUYER_PATHS.some((p) => pathname.startsWith(p))) {
     if (!isAuthenticated) {
       return NextResponse.redirect(new URL(`/login?callbackUrl=${pathname}`, req.url));
+    }
+  }
+
+  if (ADMIN_PATHS.some((p) => pathname.startsWith(p))) {
+    if (!isAuthenticated) {
+      return NextResponse.redirect(new URL(`/login?callbackUrl=${pathname}`, req.url));
+    }
+    if (role !== "ADMIN") {
+      return NextResponse.redirect(new URL("/", req.url));
     }
   }
 

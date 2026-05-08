@@ -3,6 +3,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
+import { initializePayment, generateReference } from "@/lib/paystack";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -53,12 +54,17 @@ export async function createEvent(
 
   const slug = await uniqueSlug(slugify(data.title));
 
-  // Verify payout method belongs to this seller
-  const payoutMethod = await db.payoutMethod.findFirst({
-    where: { id: data.payoutMethodId, sellerId: session.user.id },
-  });
-  if (!payoutMethod) {
-    return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+  // For PAID events, verify payout method belongs to this seller
+  if (data.eventType === "PAID") {
+    if (!data.payoutMethodId) {
+      return { ok: false, error: "Select a payout method." };
+    }
+    const payoutMethod = await db.payoutMethod.findFirst({
+      where: { id: data.payoutMethodId, sellerId: session.user.id },
+    });
+    if (!payoutMethod) {
+      return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+    }
   }
 
   const event = await db.event.create({
@@ -72,7 +78,9 @@ export async function createEvent(
       venue: data.venue,
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
-      payoutMethodId: data.payoutMethodId,
+      payoutMethodId: data.eventType === "PAID" ? (data.payoutMethodId ?? null) : null,
+      eventType: data.eventType,
+      isPrivate: data.isPrivate,
       status: "DRAFT",
       ticketCategories: {
         create: data.ticketCategories.map((cat: CreateEventFormData["ticketCategories"][number], i: number) => ({
@@ -170,28 +178,31 @@ export async function updateEvent(
     }
   }
 
-  // Lock payout method if any payments have been received
-  if (data.payoutMethodId !== existingEvent.payoutMethodId) {
-    const hasPaidOrders = await db.order.count({
-      where: {
-        ticketCategory: { eventId },
-        status: { notIn: ["PENDING", "CANCELLED"] },
-      },
-    });
-    if (hasPaidOrders > 0) {
-      return {
-        ok: false,
-        error: "Payout method cannot be changed once payments have been received for this event.",
-      };
+  // For PAID events: lock and verify payout method
+  if (data.eventType === "PAID") {
+    if (!data.payoutMethodId) {
+      return { ok: false, error: "Select a payout method." };
     }
-  }
-
-  // Verify payout method belongs to this seller
-  const payoutMethod = await db.payoutMethod.findFirst({
-    where: { id: data.payoutMethodId, sellerId: session.user.id },
-  });
-  if (!payoutMethod) {
-    return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+    if (data.payoutMethodId !== existingEvent.payoutMethodId) {
+      const hasPaidOrders = await db.order.count({
+        where: {
+          ticketCategory: { eventId },
+          status: { notIn: ["PENDING", "CANCELLED"] },
+        },
+      });
+      if (hasPaidOrders > 0) {
+        return {
+          ok: false,
+          error: "Payout method cannot be changed once payments have been received for this event.",
+        };
+      }
+    }
+    const payoutMethod = await db.payoutMethod.findFirst({
+      where: { id: data.payoutMethodId, sellerId: session.user.id },
+    });
+    if (!payoutMethod) {
+      return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
+    }
   }
 
   // Update basic event fields
@@ -205,7 +216,8 @@ export async function updateEvent(
       venue: data.venue,
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
-      payoutMethodId: data.payoutMethodId,
+      payoutMethodId: data.eventType === "PAID" ? (data.payoutMethodId ?? null) : null,
+      isPrivate: data.isPrivate,
     },
   });
 
@@ -330,4 +342,36 @@ export async function unpublishEvent(
   });
 
   return { ok: true, data: { status: "DRAFT" } };
+}
+
+export async function initiateEventActivationFee(
+  eventId: string
+): Promise<ApiResponse<{ authorizationUrl: string }>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const event = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+  });
+
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.eventType !== "FREE") return { ok: false, error: "This event is not a free event." };
+  if (event.platformFeePaid) return { ok: false, error: "Activation fee already paid." };
+
+  const reference = generateReference("ACT");
+
+  const res = await initializePayment({
+    email: session.user.email!,
+    amount: 100000, // KES 1,000 in smallest unit
+    reference,
+    metadata: {
+      type: "free_event_fee",
+      eventId,
+    },
+    callback_url: `${process.env.NEXTAUTH_URL}/seller/events/${eventId}/activate/callback`,
+  });
+
+  return { ok: true, data: { authorizationUrl: res.data.authorization_url } };
 }

@@ -9,16 +9,14 @@ export const installmentItemSchema = z.object({
 export const installmentPlanSchema = z.object({
   initialPaymentPercent: z.number().min(1, "Required").max(99),
   gracePeriodDays: z.number().min(1),
-  scheduleItems: z
-    .array(installmentItemSchema)
-    .min(1, "Add at least one installment"),
+  scheduleItems: z.array(installmentItemSchema),
 });
 
 export const ticketCategorySchema = z.object({
   id: z.string().optional(), // present when editing an existing category
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  price: z.number().min(1, "Price must be greater than 0"),
+  price: z.number().min(0, "Price must be 0 or greater"),
   totalQuantity: z.number().min(1, "Quantity must be at least 1"),
   allowInstallments: z.boolean(),
   sortOrder: z.number(),
@@ -33,7 +31,9 @@ const eventBaseSchema = z.object({
   venue: z.string().min(2, "Venue is required"),
   city: z.string().optional(),
   coverImage: z.string().optional(),
-  payoutMethodId: z.string().min(1, "Select a payout method"),
+  payoutMethodId: z.string().optional(),
+  eventType: z.enum(["FREE", "PAID"]),
+  isPrivate: z.boolean(),
   ticketCategories: z
     .array(ticketCategorySchema)
     .min(1, "Add at least one ticket category"),
@@ -59,6 +59,14 @@ function installmentDateRefinement(
   const eventDateStr = data.date.slice(0, 10);
   data.ticketCategories.forEach((cat, catIdx) => {
     if (!cat.allowInstallments || !cat.installmentPlan) return;
+    if (cat.installmentPlan.scheduleItems.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Add at least one installment",
+        path: ["ticketCategories", catIdx, "installmentPlan", "scheduleItems"],
+      });
+      return;
+    }
     let prevDueDate = "";
     cat.installmentPlan.scheduleItems.forEach((item, itemIdx) => {
       if (!item.dueDate) return;
@@ -95,6 +103,36 @@ export const createEventSchema = eventBaseSchema.superRefine((data, ctx) => {
       });
     }
   }
+
+  // PAID events require a payout method
+  if (data.eventType === "PAID" && !data.payoutMethodId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Select a payout method",
+      path: ["payoutMethodId"],
+    });
+  }
+
+  // FREE events: all prices must be 0 and no installments
+  if (data.eventType === "FREE") {
+    data.ticketCategories.forEach((cat, catIdx) => {
+      if (cat.price !== 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Free event ticket prices must be 0",
+          path: ["ticketCategories", catIdx, "price"],
+        });
+      }
+      if (cat.allowInstallments) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Free events cannot have installments",
+          path: ["ticketCategories", catIdx, "allowInstallments"],
+        });
+      }
+    });
+  }
+
   installmentDateRefinement(data, ctx, todayStr);
 });
 
@@ -102,6 +140,36 @@ export const createEventSchema = eventBaseSchema.superRefine((data, ctx) => {
 // so sellers can edit events that are happening today or are ongoing.
 export const editEventSchema = eventBaseSchema.superRefine((data, ctx) => {
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  // PAID events require a payout method
+  if (data.eventType === "PAID" && !data.payoutMethodId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Select a payout method",
+      path: ["payoutMethodId"],
+    });
+  }
+
+  // FREE events: all prices must be 0 and no installments
+  if (data.eventType === "FREE") {
+    data.ticketCategories.forEach((cat, catIdx) => {
+      if (cat.price !== 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Free event ticket prices must be 0",
+          path: ["ticketCategories", catIdx, "price"],
+        });
+      }
+      if (cat.allowInstallments) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Free events cannot have installments",
+          path: ["ticketCategories", catIdx, "allowInstallments"],
+        });
+      }
+    });
+  }
+
   installmentDateRefinement(data, ctx, todayStr);
 });
 

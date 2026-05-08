@@ -5,17 +5,21 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
+import { DatePicker } from "@/components/ui/DatePicker";
 import type { CreateEventFormData } from "@/lib/schemas/event";
 
 interface Props {
   index: number;
   onRemove?: () => void;
+  isFreeEvent?: boolean;
 }
 
-export function TicketCategoryFields({ index, onRemove }: Props) {
+export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: Props) {
   const {
     register,
     control,
+    watch,
+    setValue,
     formState: { errors },
   } = useFormContext<CreateEventFormData>();
 
@@ -80,15 +84,22 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
           </div>
           <div>
             <Label required>Price (KES)</Label>
-            <Input
-              type="number"
-              min={1}
-              placeholder="5000"
-              error={catErrors?.price?.message}
-              {...register(`ticketCategories.${index}.price`, {
-                valueAsNumber: true,
-              })}
-            />
+            {isFreeEvent ? (
+              <div className="flex h-10 w-full items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-400">
+                Free
+                <input type="hidden" {...register(`ticketCategories.${index}.price`, { valueAsNumber: true })} value={0} />
+              </div>
+            ) : (
+              <Input
+                type="number"
+                min={1}
+                placeholder="5000"
+                error={catErrors?.price?.message}
+                {...register(`ticketCategories.${index}.price`, {
+                  valueAsNumber: true,
+                })}
+              />
+            )}
           </div>
           <div>
             <Label required>Available tickets</Label>
@@ -112,24 +123,26 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
           />
         </div>
 
-        {/* Installments toggle */}
-        <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <label className="relative inline-flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              {...register(`ticketCategories.${index}.allowInstallments`)}
-            />
-            <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
-          </label>
-          <div>
-            <p className="text-sm font-medium text-gray-900">Allow installments</p>
-            <p className="text-xs text-gray-500">Buyers can pay in multiple installments</p>
+        {/* Installments toggle + plan config — hidden for free events */}
+        {!isFreeEvent && (
+          <>
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                {...register(`ticketCategories.${index}.allowInstallments`)}
+              />
+              <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+            </label>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Allow installments</p>
+              <p className="text-xs text-gray-500">Buyers can pay in multiple installments</p>
+            </div>
           </div>
-        </div>
 
-        {/* Installment plan config — shown only when toggle is on */}
-        {allowInstallments && (
+          {/* Installment plan config — shown only when toggle is on */}
+          {allowInstallments && (
           <div className="rounded-lg border border-primary-200 bg-primary-50 p-4 space-y-4">
             <p className="text-sm font-medium text-primary-800">Installment plan</p>
 
@@ -253,12 +266,10 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
                     </div>
                     <div className="flex-1">
                       <Label>Due date</Label>
-                      <Input
-                        type="date"
+                      <DatePicker
+                        value={watch(`ticketCategories.${index}.installmentPlan.scheduleItems.${si}.dueDate`) ?? ""}
+                        onChange={(v) => setValue(`ticketCategories.${index}.installmentPlan.scheduleItems.${si}.dueDate`, v, { shouldValidate: true })}
                         error={planErrors?.scheduleItems?.[si]?.dueDate?.message}
-                        {...register(
-                          `ticketCategories.${index}.installmentPlan.scheduleItems.${si}.dueDate`
-                        )}
                       />
                     </div>
                     <button
@@ -281,6 +292,8 @@ export function TicketCategoryFields({ index, onRemove }: Props) {
               )}
             </div>
           </div>
+          )}
+          </>
         )}
       </CardBody>
     </Card>
