@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
@@ -541,11 +542,21 @@ export async function sellerReinstateOrder(
       where: { id: orderId },
       data: { status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" },
     }),
-    db.ticketCategory.update({
+  ]);
+
+  try {
+    await db.ticketCategory.update({
       where: { id: order.ticketCategoryId },
       data: { soldQuantity: { increment: order.quantity } },
-    }),
-  ]);
+    });
+  } catch (err) {
+    console.error("[sellerReinstateOrder] soldQuantity increment failed:", err);
+  }
+
+  revalidatePath("/buyer");
+  revalidatePath("/seller/events/[id]", "page");
+  revalidatePath("/seller/analytics");
+  revalidatePath("/admin/orders");
 
   try {
     await sendTicketReinstatementNotice({

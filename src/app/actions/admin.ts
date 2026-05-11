@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { initiateTransfer, toKobo, generateReference } from "@/lib/paystack";
@@ -333,11 +334,23 @@ export async function reinstateOrder(orderId: string): Promise<ApiResponse<null>
       where: { id: orderId },
       data: { status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" },
     }),
-    db.ticketCategory.update({
+  ]);
+
+  // Restore the sold-quantity counter separately so a stale count never
+  // rolls back the ticket reinstatement above.
+  try {
+    await db.ticketCategory.update({
       where: { id: order.ticketCategoryId },
       data: { soldQuantity: { increment: order.quantity } },
-    }),
-  ]);
+    });
+  } catch (err) {
+    console.error("[reinstateOrder] soldQuantity increment failed:", err);
+  }
+
+  revalidatePath("/admin/orders");
+  revalidatePath("/buyer");
+  revalidatePath("/seller/events/[id]", "page");
+  revalidatePath("/seller/analytics");
 
   try {
     await sendTicketReinstatementNotice({

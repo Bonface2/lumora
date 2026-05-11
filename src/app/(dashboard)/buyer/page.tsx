@@ -54,6 +54,8 @@ function calcRevocation(
   return { label: `${days} days to revocation.`, level: "caution" };
 }
 
+export const dynamic = "force-dynamic";
+
 type Tab = "all" | "paid" | "installments" | "defaulted" | "revoked";
 
 export default async function BuyerTicketsPage({

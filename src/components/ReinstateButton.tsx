@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface Props {
   orderId: string;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ReinstateButton({ orderId, buyerName, action, onDone }: Props) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -30,6 +32,7 @@ export function ReinstateButton({ orderId, buyerName, action, onDone }: Props) {
     }
     setDone(true);
     onDone?.();
+    router.refresh();
   }
 
   return (
