@@ -4,6 +4,7 @@ type ExperienceType = "PUBLIC" | "INVITE_ONLY" | "GROUP_TRIP";
 
 interface Props {
   onSelect: (type: ExperienceType) => void;
+  groupTripAutoApproveCap?: number;
 }
 
 const OPTIONS = [
@@ -39,7 +40,7 @@ const OPTIONS = [
     type: "GROUP_TRIP" as const,
     title: "Private group trip",
     description:
-      "Private booking for group trips or experiences. Perfect for tracking payments and installments. No ticket scanning needed.",
+      "Private booking for a known group. Perfect for tracking payments and installments. No public listing or ticket scanning.",
     badge: "Installments supported",
     badgeStyle: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
     icon: (
@@ -51,7 +52,7 @@ const OPTIONS = [
   },
 ];
 
-export function ExperienceTypeSelector({ onSelect }: Props) {
+export function ExperienceTypeSelector({ onSelect, groupTripAutoApproveCap = 10 }: Props) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {OPTIONS.map((opt) => (
@@ -66,11 +67,16 @@ export function ExperienceTypeSelector({ onSelect }: Props) {
           </div>
           <h3 className="mb-1.5 text-base font-black text-gray-900">{opt.title}</h3>
           <p className="mb-4 text-sm leading-relaxed text-gray-500">{opt.description}</p>
-          <div className="mt-auto flex items-center gap-2">
+          <div className="mt-auto flex flex-col gap-2">
             {opt.badge && (
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${opt.badgeStyle}`}>
+              <span className={`self-start rounded-full px-2.5 py-1 text-xs font-semibold ${opt.badgeStyle}`}>
                 {opt.badge}
               </span>
+            )}
+            {opt.type === "GROUP_TRIP" && (
+              <p className="text-[11px] leading-snug text-amber-600">
+                Up to {groupTripAutoApproveCap} guests auto-approved. Larger groups require Lumora review.
+              </p>
             )}
           </div>
           <div className="mt-4 flex items-center gap-1.5 font-semibold text-primary-600 group-hover:text-primary-700">

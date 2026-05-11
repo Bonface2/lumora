@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer } from "@/components/layouts/Footer";
+import { getPlatformConfig } from "@/lib/platformConfig";
 
 export const metadata: Metadata = { title: "Terms of Service" };
 
@@ -8,15 +9,17 @@ const LAST_UPDATED = "11 May 2026";
 
 function Section({
   number,
+  id,
   title,
   children,
 }: {
   number: string;
+  id?: string;
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+    <div id={id} className="scroll-mt-20 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8">
       <div className="flex items-start gap-4">
         <span className="flex-shrink-0 rounded-lg bg-primary-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-primary-600">
           {number}
@@ -41,7 +44,18 @@ function Bullet({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function TermsPage() {
+function SubBullet({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex gap-2">
+      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+export default async function TermsPage() {
+  const { groupTripAutoApproveCap: cap } = await getPlatformConfig();
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Nav */}
@@ -93,6 +107,8 @@ export default function TermsPage() {
             <Bullet><strong className="text-gray-800">"Seller / Host"</strong> — any user who lists an event or experience on the Platform.</Bullet>
             <Bullet><strong className="text-gray-800">"Ticket"</strong> — a digital token granting admission to a specific event or experience.</Bullet>
             <Bullet><strong className="text-gray-800">"Installment Plan"</strong> — a payment schedule whereby the Buyer pays in multiple tranches.</Bullet>
+            <Bullet><strong className="text-gray-800">"Experience Type"</strong> — the category selected by a Seller when creating a listing, determining access rules and applicable terms. See Section 09.</Bullet>
+            <Bullet><strong className="text-gray-800">"Group Trip"</strong> — a private, cost-sharing social experience organised for a pre-defined group of people who know each other personally. Subject to the specific rules in Section 10.</Bullet>
           </ul>
         </Section>
 
@@ -251,17 +267,135 @@ export default function TermsPage() {
             <Bullet>Honour all tickets sold through the Platform.</Bullet>
             <Bullet>Process refunds promptly in the event of cancellation.</Bullet>
             <Bullet>Comply with all applicable Kenyan laws, including those governing public gatherings and entertainment.</Bullet>
+            <Bullet>Select the correct Experience Type for their listing and abide by all associated terms.</Bullet>
           </ul>
         </Section>
 
-        <Section number="09" title="Payments & Payouts">
+        <Section number="09" id="09" title="Experience Types">
+          <p>
+            Lumora supports three experience types, each designed for a different kind of event. By selecting an experience type, the Seller confirms they understand and accept the terms specific to that type.
+          </p>
+
+          <p className="mt-3 font-semibold text-gray-800">Public Event</p>
+          <p>
+            A publicly listed event open to anyone on the Lumora marketplace. Public Events are discoverable by all visitors and any registered user may purchase a ticket.
+          </p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>Suitable for concerts, workshops, community events, fundraisers, and any gathering open to the general public.</Bullet>
+            <Bullet>Paid Public Events are subject to a percentage-based platform fee on each ticket sold.</Bullet>
+            <Bullet>The Seller is responsible for ensuring the event complies with all applicable laws governing public gatherings in Kenya.</Bullet>
+          </ul>
+
+          <p className="mt-3 font-semibold text-gray-800">Invite-Only Event</p>
+          <p>
+            A private event not listed publicly. Access is granted only via an invitation link or direct email invite sent by the organiser. Invite-Only events do not appear in Lumora search or browse pages.
+          </p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>Suitable for private gatherings, corporate functions, exclusive workshops, or any event where the organiser curates the guest list.</Bullet>
+            <Bullet>Paid Invite-Only Events are subject to a percentage-based platform fee on each ticket sold.</Bullet>
+            <Bullet>The organiser is responsible for ensuring that invitation links are shared only with intended guests.</Bullet>
+          </ul>
+
+          <p className="mt-3 font-semibold text-gray-800">Group Trip</p>
+          <p>
+            A private, cost-sharing social experience organised for a pre-defined group of people who know each other personally — such as friends, family, or a community group — where the purpose is to share the cost of a trip rather than to generate commercial profit.
+          </p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>Group Trips are <strong className="text-gray-800">always private</strong>. They are never publicly listed or discoverable on the marketplace.</Bullet>
+            <Bullet>Group Trips are subject to a flat platform fee rather than a percentage-based fee, reflecting their non-commercial nature.</Bullet>
+            <Bullet>
+              Group Trips are subject to <strong className="text-gray-800">additional specific rules</strong> set out in full in Section 10. These rules exist to prevent misuse of the reduced fee structure by commercial tour operators and travel businesses.
+            </Bullet>
+            <Bullet>By selecting the Group Trip experience type, the organiser makes a binding legal declaration that the trip qualifies under Section 10.</Bullet>
+          </ul>
+        </Section>
+
+        <Section number="10" id="10" title="Group Trip Policy">
+          <p className="font-semibold text-gray-800">Purpose and scope</p>
+          <p>
+            The Group Trip experience type is reserved exclusively for genuine social group travel — trips organised among people who know each other personally, where participants share costs for a shared experience. It is <strong className="text-gray-800">not</strong> available to businesses, tour operators, travel agencies, safari companies, or any individual or entity using the Platform as a channel to sell commercial travel services.
+          </p>
+
+          <p className="mt-4 font-semibold text-gray-800">Eligibility rules</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              <strong className="text-gray-800">Personal social use only.</strong> Group Trips may only be created to organise travel among a defined group of people who know each other — for example, friends, family members, colleagues travelling together, or members of a social community. Cost-sharing among such a group is permitted.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">No commercial tourism.</strong> Creating a Group Trip listing to sell tour packages, safari experiences, travel itineraries, or any other commercial travel product — regardless of the price or the number of participants — is strictly prohibited and constitutes a material breach of these Terms.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Organiser declaration.</strong> When creating a Group Trip, the organiser must confirm by checkbox that the trip is a genuine social group trip and that they are not running a commercial tour or travel business. This declaration constitutes a binding legal representation. Providing a false declaration is a serious breach of these Terms and may expose the organiser to civil and criminal liability.
+            </Bullet>
+          </ul>
+
+          <p className="mt-4 font-semibold text-gray-800">Capacity and review</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              <strong className="text-gray-800">Auto-approve cap.</strong> Group Trips with a declared guest count of <strong className="text-gray-800">{cap} or fewer</strong> are automatically approved and proceed to Draft status immediately.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Admin review for larger groups.</strong> Group Trips with a declared guest count <strong className="text-gray-800">above {cap}</strong> require Lumora review before the event may be published. Lumora will review the trip and notify the organiser by email once a decision has been made. Lumora reserves the right to decline any listing that does not meet the criteria for a genuine social group trip.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Capacity enforcement.</strong> The total number of tickets created for a Group Trip may not exceed the organiser's declared guest count.
+            </Bullet>
+          </ul>
+
+          <p className="mt-4 font-semibold text-gray-800">Capacity expansion</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              Once a Group Trip is published, the organiser may submit <strong className="text-gray-800">one capacity expansion request per event</strong>. No further expansion requests will be accepted after the first has been submitted, whether approved or declined.
+            </Bullet>
+            <Bullet>
+              An expansion request must include: the number of additional participants requested, a written reason for the expansion, and the full contact details (name, email address, and phone number) of each additional participant.
+            </Bullet>
+            <Bullet>
+              Lumora will review expansion requests and notify the organiser by email. Approval is at Lumora&apos;s sole discretion.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">No circumvention.</strong> Creating multiple Group Trip listings for the same commercial activity in order to stay under the capacity cap or avoid review is prohibited and constitutes a breach of these Terms.
+            </Bullet>
+          </ul>
+
+          <p className="mt-4 font-semibold text-gray-800">Enforcement and consequences</p>
+          <p>
+            Lumora takes misuse of the Group Trip experience type seriously. Any organiser found to be using this feature for commercial touring, travel sales, or any other prohibited purpose — including by making a false declaration at the time of creation — will be subject to all of the following:
+          </p>
+          <ul className="mt-2 space-y-2">
+            <Bullet>Immediate suspension or permanent termination of their Lumora account;</Bullet>
+            <Bullet>Forfeiture of any pending or future payouts related to the affected event(s);</Bullet>
+            <Bullet>Recovery by Lumora of the difference between the flat fee charged and the percentage fee that would have applied had the correct experience type been selected;</Bullet>
+            <Bullet>Reporting to the relevant Kenyan authorities, including the <strong className="text-gray-800">Kenya Revenue Authority (KRA)</strong> and law enforcement agencies, where the conduct constitutes fraud, tax evasion, or any other criminal offence under Kenyan law.</Bullet>
+          </ul>
+          <p className="mt-3">
+            Lumora reserves the right to pursue civil and criminal remedies against any party found to have misused the Platform, including claims for damages, legal costs, and any amounts improperly obtained through misrepresentation.
+          </p>
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p className="font-semibold text-red-800">Legal warning</p>
+            <p className="mt-1 text-red-700">
+              Misrepresenting a commercial operation as a personal group trip may constitute:
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              <SubBullet><strong className="text-red-800">Fraud</strong> under the Kenyan Penal Code (Cap. 63), which is a criminal offence carrying a custodial sentence;</SubBullet>
+              <SubBullet><strong className="text-red-800">Tax evasion or underdeclaration of income</strong> under the Tax Procedures Act, 2015 and the Income Tax Act (Cap. 470), attracting penalties and prosecution by the KRA;</SubBullet>
+              <SubBullet><strong className="text-red-800">Breach of contract</strong> giving rise to civil liability for damages.</SubBullet>
+            </ul>
+            <p className="mt-3 text-red-700">
+              Lumora will cooperate fully with any investigation by relevant authorities and will provide transaction records, user information, and any other data as required by law or court order.
+            </p>
+          </div>
+        </Section>
+
+        <Section number="11" title="Payments & Payouts">
           <p>Payment processing is handled by <strong className="text-gray-800">Paystack</strong>. By using the Platform you agree to Paystack's terms of service. Seller payouts are processed after event completion, subject to any applicable holds for disputes or chargebacks. Lumora reserves the right to withhold payouts pending resolution of a dispute.</p>
         </Section>
 
-        <Section number="10" title="Prohibited Conduct">
+        <Section number="12" title="Prohibited Conduct">
           <p>You may not:</p>
           <ul className="mt-1 space-y-2">
             <Bullet>List or purchase tickets for fraudulent, illegal, or non-existent events.</Bullet>
+            <Bullet>Select an experience type that does not accurately describe your event in order to obtain a reduced platform fee or bypass review requirements.</Bullet>
             <Bullet>Circumvent the Platform's ticket-transfer mechanisms to duplicate or counterfeit tickets.</Bullet>
             <Bullet>Use automated tools to scrape, bulk-purchase, or manipulate listings.</Bullet>
             <Bullet>Harass, defame, or harm other users.</Bullet>
@@ -269,23 +403,23 @@ export default function TermsPage() {
           <p className="mt-1">Violation of these prohibitions may result in immediate account termination and, where applicable, referral to law enforcement.</p>
         </Section>
 
-        <Section number="11" title="Intellectual Property">
+        <Section number="13" title="Intellectual Property">
           <p>All content on the Platform — including the Lumora name, logo, and design — is owned by or licensed to Lumora. You may not copy, reproduce, or distribute any part of the Platform without prior written consent.</p>
         </Section>
 
-        <Section number="12" title="Limitation of Liability">
+        <Section number="14" title="Limitation of Liability">
           <p>To the maximum extent permitted by applicable law, Lumora is not liable for any indirect, incidental, or consequential damages arising from your use of the Platform, including but not limited to losses arising from event cancellations, payment failures, or data breaches beyond our reasonable control.</p>
         </Section>
 
-        <Section number="13" title="Governing Law">
+        <Section number="15" title="Governing Law">
           <p>These Terms are governed by the laws of the Republic of Kenya. Any disputes shall be subject to the exclusive jurisdiction of the courts of Nairobi, Kenya.</p>
         </Section>
 
-        <Section number="14" title="Changes to These Terms">
+        <Section number="16" title="Changes to These Terms">
           <p>We may update these Terms from time to time. Continued use of the Platform after changes are posted constitutes acceptance of the revised Terms. We will notify registered users of material changes by email.</p>
         </Section>
 
-        <Section number="15" title="Contact">
+        <Section number="17" title="Contact">
           <p>
             Questions about these Terms? Reach us at{" "}
             <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a>{" "}

@@ -32,6 +32,7 @@ enum EventStatus {
   PUBLISHED
   CANCELLED
   COMPLETED
+  PENDING_REVIEW // GROUP_TRIP with capacity > auto-approve cap, awaiting admin approval
 }
 
 enum OrderStatus {
@@ -164,6 +165,7 @@ model Event {
   platformFlatFee    Decimal?    @db.Decimal(10, 2) // per-event override for GROUP_TRIP flat fee
   platformFeeAmount  Decimal?    @db.Decimal(10, 2)
   attendeeCap        Int?
+  groupTripCapacity  Int?         // Declared group size for GROUP_TRIP events
   payoutMethodId     String?
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
@@ -173,6 +175,7 @@ model Event {
   ticketCategories TicketCategory[]
   invites          EventInvite[]
   privateTokens    PrivateEventToken[]
+  expansionRequest GroupTripExpansionRequest?
 
   @@index([sellerId])
   @@index([status])
@@ -461,12 +464,31 @@ model PasswordResetToken {
 // ─── Platform transaction fee config (singleton) ─────────────────────────────
 
 model PlatformConfig {
-  id               String   @id @default("singleton")
-  paidFeePercent   Decimal  @default(6)  @db.Decimal(5, 2)
-  groupTripFlatFee Decimal  @default(50) @db.Decimal(10, 2)
-  updatedAt        DateTime @updatedAt
+  id                      String   @id @default("singleton")
+  paidFeePercent          Decimal  @default(6)  @db.Decimal(5, 2)
+  groupTripFlatFee        Decimal  @default(50) @db.Decimal(10, 2)
+  groupTripAutoApproveCap Int      @default(10)
+  updatedAt               DateTime @updatedAt
 
   @@map("platform_config")
+}
+
+// ─── Group trip capacity expansion requests ───────────────────────────────────
+
+model GroupTripExpansionRequest {
+  id                  String    @id @default(cuid())
+  eventId             String    @unique  // one request per event, ever
+  requestedAdditional Int
+  inviteeDetails      Json      // Array of {name?, email, phone}
+  reason              String    @db.Text
+  status              String    @default("PENDING")  // PENDING | APPROVED | REJECTED
+  adminNote           String?   @db.Text
+  createdAt           DateTime  @default(now())
+  reviewedAt          DateTime?
+
+  event               Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("group_trip_expansion_requests")
 }
 
 // ─── Platform fee tiers (admin-configurable) ─────────────────────────────────

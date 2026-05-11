@@ -1210,3 +1210,197 @@ export async function sendPasswordResetEmail({
     }),
   });
 }
+
+// ─── Group trip emails ────────────────────────────────────────────────────────
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? process.env.EMAIL_FROM ?? "admin@lumora.app";
+const APP_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+
+export async function sendGroupTripPendingNotice({
+  eventId,
+  eventTitle,
+  sellerName,
+  sellerEmail,
+  guestCount,
+}: {
+  eventId: string;
+  eventTitle: string;
+  sellerName: string;
+  sellerEmail: string;
+  guestCount: number;
+}) {
+  const reviewUrl = `${APP_URL}/admin/group-trips`;
+  const body = `
+    <p style="margin:0 0 16px;">A new group trip has been submitted and requires review before it can be published.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+      <tr><td style="padding:8px 0;color:#64748b;width:140px;">Event</td><td style="padding:8px 0;font-weight:600;color:#0f172a;">${eventTitle}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Organiser</td><td style="padding:8px 0;color:#0f172a;">${sellerName} (${sellerEmail})</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Declared guests</td><td style="padding:8px 0;font-weight:700;color:#f59e0b;">${guestCount} people</td></tr>
+    </table>
+    <p style="margin:0 0 20px;color:#475569;font-size:14px;">This trip exceeds the auto-approve threshold and must be reviewed manually.</p>
+    <div style="text-align:center;">
+      <a href="${reviewUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">Review on admin console</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to: ADMIN_EMAIL,
+    subject: `[Review required] Group trip: "${eventTitle}" — ${guestCount} guests`,
+    html: shell({ preheader: `New group trip pending review: ${eventTitle}`, headline: "Group trip review needed", label: "Admin", accentColor: "#f59e0b", body }),
+  });
+}
+
+export async function sendGroupTripApprovedNotice({
+  to,
+  sellerName,
+  eventTitle,
+  capacity,
+}: {
+  to: string;
+  sellerName: string;
+  eventTitle: string;
+  capacity: number;
+}) {
+  const body = `
+    <p style="margin:0 0 16px;">Great news, ${sellerName}! Your group trip has been reviewed and approved.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#166534;">${eventTitle}</p>
+      <p style="margin:6px 0 0;font-size:13px;color:#15803d;">Approved for up to ${capacity} guests</p>
+    </div>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">Your event is now in Draft status. Head to your seller dashboard to publish it and start inviting your guests.</p>
+    <div style="text-align:center;">
+      <a href="${APP_URL}/seller" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">Go to my events</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your group trip "${eventTitle}" has been approved`,
+    html: shell({ preheader: `Your group trip is approved and ready to publish`, headline: "Group trip approved", label: "Group trip", accentColor: "#22c55e", body }),
+  });
+}
+
+export async function sendGroupTripRejectedNotice({
+  to,
+  sellerName,
+  eventTitle,
+  reason,
+}: {
+  to: string;
+  sellerName: string;
+  eventTitle: string;
+  reason: string;
+}) {
+  const body = `
+    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your group trip and are unable to approve it at this time.</p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#991b1b;">${eventTitle}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#7f1d1d;">${reason}</p>
+    </div>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">If you believe this is a mistake or have further questions, please contact our support team.</p>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your group trip "${eventTitle}" was not approved`,
+    html: shell({ preheader: `Update on your group trip application`, headline: "Group trip not approved", label: "Group trip", accentColor: "#ef4444", body }),
+  });
+}
+
+export async function sendGroupTripExpansionRequestNotice({
+  eventId,
+  eventTitle,
+  sellerName,
+  sellerEmail,
+  requestedAdditional,
+  currentCapacity,
+}: {
+  eventId: string;
+  eventTitle: string;
+  sellerName: string;
+  sellerEmail: string;
+  requestedAdditional: number;
+  currentCapacity: number;
+}) {
+  void eventId;
+  const reviewUrl = `${APP_URL}/admin/group-trips`;
+  const body = `
+    <p style="margin:0 0 16px;">An organiser has requested a capacity expansion for their group trip.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+      <tr><td style="padding:8px 0;color:#64748b;width:160px;">Event</td><td style="padding:8px 0;font-weight:600;color:#0f172a;">${eventTitle}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Organiser</td><td style="padding:8px 0;color:#0f172a;">${sellerName} (${sellerEmail})</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Current capacity</td><td style="padding:8px 0;color:#0f172a;">${currentCapacity} guests</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Requested addition</td><td style="padding:8px 0;font-weight:700;color:#f59e0b;">+${requestedAdditional} guests</td></tr>
+    </table>
+    <p style="margin:0 0 20px;color:#475569;font-size:14px;">Review the invitee list and reason on the admin console before approving.</p>
+    <div style="text-align:center;">
+      <a href="${reviewUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">Review expansion request</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to: ADMIN_EMAIL,
+    subject: `[Expansion request] "${eventTitle}" — +${requestedAdditional} guests`,
+    html: shell({ preheader: `Group trip expansion request: ${eventTitle}`, headline: "Capacity expansion request", label: "Admin", accentColor: "#f59e0b", body }),
+  });
+}
+
+export async function sendGroupTripExpansionApprovedNotice({
+  to,
+  sellerName,
+  eventTitle,
+  additionalSlots,
+  newCapacity,
+}: {
+  to: string;
+  sellerName: string;
+  eventTitle: string;
+  additionalSlots: number;
+  newCapacity: number;
+}) {
+  const body = `
+    <p style="margin:0 0 16px;">Hi ${sellerName}, your capacity expansion request has been approved.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#166534;">${eventTitle}</p>
+      <p style="margin:6px 0 0;font-size:13px;color:#15803d;">+${additionalSlots} slots approved — new total capacity: ${newCapacity} guests</p>
+    </div>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">Remember to update your ticket category quantities on your event page to make the new slots available to your guests.</p>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;"><strong>Note:</strong> this was a one-time expansion. No further expansion requests can be submitted for this event.</p>
+    <div style="text-align:center;">
+      <a href="${APP_URL}/seller" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">Go to my events</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Capacity expansion approved for "${eventTitle}"`,
+    html: shell({ preheader: `Your expansion request was approved`, headline: "Expansion approved", label: "Group trip", accentColor: "#22c55e", body }),
+  });
+}
+
+export async function sendGroupTripExpansionRejectedNotice({
+  to,
+  sellerName,
+  eventTitle,
+  note,
+}: {
+  to: string;
+  sellerName: string;
+  eventTitle: string;
+  note: string;
+}) {
+  const body = `
+    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your capacity expansion request and are unable to approve it.</p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#991b1b;">${eventTitle}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#7f1d1d;">${note}</p>
+    </div>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">If you have further questions, please reach out to our support team.</p>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Expansion request for "${eventTitle}" was not approved`,
+    html: shell({ preheader: `Update on your expansion request`, headline: "Expansion request declined", label: "Group trip", accentColor: "#ef4444", body }),
+  });
+}

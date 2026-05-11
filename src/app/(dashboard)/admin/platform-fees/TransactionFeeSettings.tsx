@@ -7,11 +7,13 @@ import { updatePlatformConfig } from "@/app/actions/admin";
 interface Props {
   paidFeePercent: number;
   groupTripFlatFee: number;
+  groupTripAutoApproveCap: number;
 }
 
-export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatFee: initialFlat }: Props) {
+export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatFee: initialFlat, groupTripAutoApproveCap: initialCap }: Props) {
   const [paidFee, setPaidFee] = useState(String(initial));
   const [flatFee, setFlatFee] = useState(String(initialFlat));
+  const [approveCap, setApproveCap] = useState(String(initialCap));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -22,6 +24,7 @@ export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatF
 
     const paidFeeNum = parseFloat(paidFee);
     const flatFeeNum = parseFloat(flatFee);
+    const approveCapNum = parseInt(approveCap, 10);
 
     if (isNaN(paidFeeNum) || paidFeeNum < 0 || paidFeeNum > 100) {
       setError("Paid event fee must be between 0 and 100.");
@@ -31,9 +34,17 @@ export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatF
       setError("Group trip flat fee must be 0 or greater.");
       return;
     }
+    if (isNaN(approveCapNum) || approveCapNum < 1) {
+      setError("Auto-approve cap must be at least 1.");
+      return;
+    }
 
     setSaving(true);
-    const res = await updatePlatformConfig({ paidFeePercent: paidFeeNum, groupTripFlatFee: flatFeeNum });
+    const res = await updatePlatformConfig({
+      paidFeePercent: paidFeeNum,
+      groupTripFlatFee: flatFeeNum,
+      groupTripAutoApproveCap: approveCapNum,
+    });
     setSaving(false);
 
     if (!res.ok) {
@@ -45,7 +56,7 @@ export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatF
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-5 sm:grid-cols-3">
         {/* Paid event fee */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -88,6 +99,27 @@ export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatF
             Flat fee per registration for group trip events.
           </p>
         </div>
+
+        {/* Group trip auto-approve cap */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            Group trip auto-approve cap
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={approveCap}
+              onChange={(e) => { setApproveCap(e.target.value); setSuccess(false); setError(""); }}
+              className="w-32 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-500">guests</span>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            Group trips at or below this size are auto-approved. Above requires admin review.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -95,7 +127,7 @@ export function TransactionFeeSettings({ paidFeePercent: initial, groupTripFlatF
       )}
       {success && (
         <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          Transaction fee settings saved.
+          Settings saved.
         </p>
       )}
 

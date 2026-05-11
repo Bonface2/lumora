@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getPayoutMethods } from "@/app/actions/payout";
+import { getPlatformConfig } from "@/lib/platformConfig";
 import { NewEventFlow } from "./NewEventFlow";
 import type { CreateEventFormData } from "@/lib/schemas/event";
 
@@ -10,7 +11,10 @@ export default async function NewEventPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const payoutMethods = await getPayoutMethods();
+  const [payoutMethods, platformConfig] = await Promise.all([
+    getPayoutMethods(),
+    getPlatformConfig(),
+  ]);
 
   const defaultValues: CreateEventFormData = {
     title: "",
@@ -43,7 +47,11 @@ export default async function NewEventPage() {
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Create a new experience</h1>
         <p className="mt-1 text-sm text-gray-500">Fill in the details below and configure your ticket categories.</p>
       </div>
-      <NewEventFlow payoutMethods={payoutMethods} defaultValues={defaultValues} />
+      <NewEventFlow
+        payoutMethods={payoutMethods}
+        defaultValues={defaultValues}
+        groupTripAutoApproveCap={platformConfig.groupTripAutoApproveCap}
+      />
     </div>
   );
 }

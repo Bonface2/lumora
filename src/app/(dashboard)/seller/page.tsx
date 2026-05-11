@@ -5,10 +5,11 @@ import Link from "next/link";
 import type { EventStatus } from "@prisma/client";
 
 const statusConfig: Record<EventStatus, { label: string; cls: string }> = {
-  DRAFT:     { label: "Draft",     cls: "bg-gray-100 text-gray-600" },
-  PUBLISHED: { label: "Published", cls: "bg-emerald-100 text-emerald-700" },
-  CANCELLED: { label: "Cancelled", cls: "bg-red-100 text-red-600" },
-  COMPLETED: { label: "Completed", cls: "bg-primary-100 text-primary-700" },
+  DRAFT:          { label: "Draft",          cls: "bg-gray-100 text-gray-600" },
+  PUBLISHED:      { label: "Published",      cls: "bg-emerald-100 text-emerald-700" },
+  CANCELLED:      { label: "Cancelled",      cls: "bg-red-100 text-red-600" },
+  COMPLETED:      { label: "Completed",      cls: "bg-primary-100 text-primary-700" },
+  PENDING_REVIEW: { label: "Pending review", cls: "bg-amber-100 text-amber-700" },
 };
 
 const gradients = [

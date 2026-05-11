@@ -37,6 +37,7 @@ const eventBaseSchema = z.object({
   eventType: z.enum(["FREE", "PAID"]),
   experienceType: z.enum(["PUBLIC", "INVITE_ONLY", "GROUP_TRIP"]),
   isPrivate: z.boolean(),
+  groupTripGuestCount: z.number().int().min(1).optional(),
   ticketCategories: z
     .array(ticketCategorySchema)
     .min(1, "Add at least one ticket category"),

@@ -5,7 +5,13 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { initiateTransfer, toKobo, generateReference } from "@/lib/paystack";
 import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
-import { sendTicketReinstatementNotice } from "@/lib/email";
+import {
+  sendTicketReinstatementNotice,
+  sendGroupTripApprovedNotice,
+  sendGroupTripRejectedNotice,
+  sendGroupTripExpansionApprovedNotice,
+  sendGroupTripExpansionRejectedNotice,
+} from "@/lib/email";
 import type { ApiResponse } from "@/types";
 
 async function requireAdmin() {
@@ -77,17 +83,29 @@ export async function getAdminPlatformConfig() {
 export async function updatePlatformConfig(input: {
   paidFeePercent: number;
   groupTripFlatFee: number;
+  groupTripAutoApproveCap: number;
 }): Promise<ApiResponse<null>> {
   if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
   if (input.paidFeePercent < 0 || input.paidFeePercent > 100)
     return { ok: false, error: "Paid fee must be between 0 and 100." };
   if (input.groupTripFlatFee < 0)
     return { ok: false, error: "Flat fee must be 0 or greater." };
+  if (!Number.isInteger(input.groupTripAutoApproveCap) || input.groupTripAutoApproveCap < 1)
+    return { ok: false, error: "Auto-approve cap must be a whole number ≥ 1." };
 
   await db.platformConfig.upsert({
     where: { id: "singleton" },
-    create: { id: "singleton", paidFeePercent: input.paidFeePercent, groupTripFlatFee: input.groupTripFlatFee },
-    update: { paidFeePercent: input.paidFeePercent, groupTripFlatFee: input.groupTripFlatFee },
+    create: {
+      id: "singleton",
+      paidFeePercent: input.paidFeePercent,
+      groupTripFlatFee: input.groupTripFlatFee,
+      groupTripAutoApproveCap: input.groupTripAutoApproveCap,
+    },
+    update: {
+      paidFeePercent: input.paidFeePercent,
+      groupTripFlatFee: input.groupTripFlatFee,
+      groupTripAutoApproveCap: input.groupTripAutoApproveCap,
+    },
   });
   return { ok: true, data: null };
 }
@@ -419,4 +437,180 @@ export async function triggerSellerPayout(
     await db.payout.update({ where: { id: payout.id }, data: { status: "failed" } });
     return { ok: false, error: err instanceof Error ? err.message : "Transfer failed." };
   }
+}
+
+// ─── Group trip review ────────────────────────────────────────────────────────
+
+export async function getPendingGroupTrips() {
+  if (!(await requireAdmin())) return [];
+  return db.event.findMany({
+    where: { status: "PENDING_REVIEW", experienceType: "GROUP_TRIP" },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      date: true,
+      venue: true,
+      city: true,
+      groupTripCapacity: true,
+      createdAt: true,
+      seller: { select: { id: true, name: true, email: true } },
+      ticketCategories: { select: { name: true, price: true, totalQuantity: true } },
+    },
+  });
+}
+
+export async function getPendingExpansionRequests() {
+  if (!(await requireAdmin())) return [];
+  return db.groupTripExpansionRequest.findMany({
+    where: { status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      requestedAdditional: true,
+      inviteeDetails: true,
+      reason: true,
+      createdAt: true,
+      event: {
+        select: {
+          id: true,
+          title: true,
+          groupTripCapacity: true,
+          seller: { select: { name: true, email: true } },
+        },
+      },
+    },
+  });
+}
+
+export async function approveGroupTrip(eventId: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const event = await db.event.findUnique({
+    where: { id: eventId },
+    select: {
+      status: true,
+      title: true,
+      groupTripCapacity: true,
+      seller: { select: { email: true, name: true } },
+    },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.status !== "PENDING_REVIEW") return { ok: false, error: "Event is not pending review." };
+
+  await db.event.update({ where: { id: eventId }, data: { status: "DRAFT" } });
+  revalidatePath("/admin/group-trips");
+
+  try {
+    await sendGroupTripApprovedNotice({
+      to: event.seller.email,
+      sellerName: event.seller.name ?? "there",
+      eventTitle: event.title,
+      capacity: event.groupTripCapacity ?? 0,
+    });
+  } catch (err) {
+    console.error("[approveGroupTrip] email failed:", err);
+  }
+
+  return { ok: true, data: null };
+}
+
+export async function rejectGroupTrip(eventId: string, reason: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const event = await db.event.findUnique({
+    where: { id: eventId },
+    select: {
+      status: true,
+      title: true,
+      seller: { select: { email: true, name: true } },
+    },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.status !== "PENDING_REVIEW") return { ok: false, error: "Event is not pending review." };
+
+  await db.event.update({ where: { id: eventId }, data: { status: "CANCELLED" } });
+  revalidatePath("/admin/group-trips");
+
+  try {
+    await sendGroupTripRejectedNotice({
+      to: event.seller.email,
+      sellerName: event.seller.name ?? "there",
+      eventTitle: event.title,
+      reason,
+    });
+  } catch (err) {
+    console.error("[rejectGroupTrip] email failed:", err);
+  }
+
+  return { ok: true, data: null };
+}
+
+export async function approveExpansionRequest(requestId: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const req = await db.groupTripExpansionRequest.findUnique({
+    where: { id: requestId },
+    include: { event: { select: { id: true, title: true, groupTripCapacity: true, seller: { select: { email: true, name: true } } } } },
+  });
+  if (!req) return { ok: false, error: "Request not found." };
+  if (req.status !== "PENDING") return { ok: false, error: "Request already reviewed." };
+
+  const newCapacity = (req.event.groupTripCapacity ?? 0) + req.requestedAdditional;
+
+  await db.$transaction([
+    db.groupTripExpansionRequest.update({
+      where: { id: requestId },
+      data: { status: "APPROVED", reviewedAt: new Date() },
+    }),
+    db.event.update({
+      where: { id: req.event.id },
+      data: { groupTripCapacity: newCapacity },
+    }),
+  ]);
+  revalidatePath("/admin/group-trips");
+
+  try {
+    await sendGroupTripExpansionApprovedNotice({
+      to: req.event.seller.email,
+      sellerName: req.event.seller.name ?? "there",
+      eventTitle: req.event.title,
+      additionalSlots: req.requestedAdditional,
+      newCapacity,
+    });
+  } catch (err) {
+    console.error("[approveExpansionRequest] email failed:", err);
+  }
+
+  return { ok: true, data: null };
+}
+
+export async function rejectExpansionRequest(requestId: string, note: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const req = await db.groupTripExpansionRequest.findUnique({
+    where: { id: requestId },
+    include: { event: { select: { title: true, seller: { select: { email: true, name: true } } } } },
+  });
+  if (!req) return { ok: false, error: "Request not found." };
+  if (req.status !== "PENDING") return { ok: false, error: "Request already reviewed." };
+
+  await db.groupTripExpansionRequest.update({
+    where: { id: requestId },
+    data: { status: "REJECTED", adminNote: note, reviewedAt: new Date() },
+  });
+  revalidatePath("/admin/group-trips");
+
+  try {
+    await sendGroupTripExpansionRejectedNotice({
+      to: req.event.seller.email,
+      sellerName: req.event.seller.name ?? "there",
+      eventTitle: req.event.title,
+      note,
+    });
+  } catch (err) {
+    console.error("[rejectExpansionRequest] email failed:", err);
+  }
+
+  return { ok: true, data: null };
 }

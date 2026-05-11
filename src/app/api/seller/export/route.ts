@@ -45,13 +45,17 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const format = searchParams.get("format") ?? "xlsx";
   const defaultersOnly = searchParams.get("defaulters") === "true";
+  const eventIds = searchParams.getAll("event").filter(Boolean);
 
   const now = new Date();
 
   const orders = await db.order.findMany({
     where: {
       ticketCategory: {
-        event: { sellerId: session.user.id },
+        event: {
+          sellerId: session.user.id,
+          ...(eventIds.length > 0 ? { id: { in: eventIds } } : {}),
+        },
       },
       NOT: { status: "PENDING" },
       ...(defaultersOnly

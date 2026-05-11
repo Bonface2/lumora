@@ -13,9 +13,11 @@ interface Props {
   index: number;
   onRemove?: () => void;
   isFreeEvent?: boolean;
+  maxTotalQuantity?: number;
 }
 
-export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: Props) {
+export function TicketCategoryFields({ index, onRemove, isFreeEvent = false, maxTotalQuantity }: Props) {
+  void maxTotalQuantity;
   const {
     register,
     control,

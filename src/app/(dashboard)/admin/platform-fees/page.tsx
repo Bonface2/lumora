@@ -41,6 +41,7 @@ export default async function PlatformFeesPage() {
           <TransactionFeeSettings
             paidFeePercent={config.paidFeePercent}
             groupTripFlatFee={config.groupTripFlatFee}
+            groupTripAutoApproveCap={config.groupTripAutoApproveCap}
           />
         </div>
 

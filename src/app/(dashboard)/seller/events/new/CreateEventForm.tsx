@@ -25,6 +25,8 @@ interface Props {
   payoutMethodLocked?: boolean;
   eventType?: "FREE" | "PAID";
   experienceType?: "PUBLIC" | "INVITE_ONLY" | "GROUP_TRIP";
+  groupTripGuestCount?: number;
+  groupTripAutoApproveCap?: number;
 }
 
 const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
@@ -52,7 +54,27 @@ function methodDisplay(m: PayoutMethodData) {
   return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
 }
 
-export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp, experienceType: experienceTypeProp }: Props) {
+function GroupTripCapacityBar({ guestCount, categories }: { guestCount: number; categories: { totalQuantity?: number }[] }) {
+  const used = categories.reduce((s, c) => s + (Number(c.totalQuantity) || 0), 0);
+  const pct = Math.min(100, Math.round((used / guestCount) * 100));
+  const over = used > guestCount;
+  return (
+    <div className={`mb-4 rounded-xl border px-4 py-3 ${over ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+        <span className={over ? "text-red-700" : "text-amber-700"}>
+          Ticket capacity: {used} / {guestCount} slots used
+        </span>
+        {over && <span className="text-red-600">Exceeds declared guest count</span>}
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-amber-200">
+        <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp, experienceType: experienceTypeProp, groupTripGuestCount, groupTripAutoApproveCap }: Props) {
+  void groupTripAutoApproveCap;
   const isEdit = Boolean(eventId);
   const router = useRouter();
   const todayMin = useMemo(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"), []);
@@ -104,6 +126,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
 
   const selectedMethodId = watch("payoutMethodId");
   const isPrivate = watch("isPrivate");
+  const watchedCategories = watch("ticketCategories");
 
   async function onSubmit(data: CreateEventFormData) {
     setServerError("");
@@ -114,9 +137,12 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       setServerError(res.error);
       return;
     }
-    // Only redirect to activate for FREE PUBLIC events (not invite-only or group trips)
     if (!isEdit && data.eventType === "FREE" && data.experienceType === "PUBLIC") {
+      // FREE public events go straight to activation
       router.push(`/seller/events/${res.data.id}/activate`);
+    } else if (!isEdit && "pendingReview" in res.data && res.data.pendingReview) {
+      // GROUP_TRIP requiring admin review
+      router.push(`/seller/events/${res.data.id}?pendingReview=1`);
     } else {
       router.push(`/seller/events/${res.data.id}`);
     }
@@ -403,6 +429,13 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
             </p>
           )}
 
+          {isGroupTrip && groupTripGuestCount && (
+            <GroupTripCapacityBar
+              guestCount={groupTripGuestCount}
+              categories={watchedCategories}
+            />
+          )}
+
           <div className="space-y-4">
             {fields.map((field, index) => (
               <TicketCategoryFields
@@ -410,6 +443,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                 index={index}
                 onRemove={fields.length > 1 ? () => remove(index) : undefined}
                 isFreeEvent={isFree}
+                maxTotalQuantity={isGroupTrip && groupTripGuestCount ? groupTripGuestCount : undefined}
               />
             ))}
           </div>

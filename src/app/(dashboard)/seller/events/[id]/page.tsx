@@ -10,13 +10,16 @@ import { RevokeButton } from "@/components/RevokeButton";
 import { ReinstateButton } from "@/components/ReinstateButton";
 import { sellerReinstateOrder } from "@/app/actions/events";
 import { createScanToken } from "@/lib/scanToken";
+import { ExpansionRequestButton } from "./ExpansionRequestButton";
+import { getPlatformConfig } from "@/lib/platformConfig";
 import type { EventStatus } from "@prisma/client";
 
 const statusConfig: Record<EventStatus, { label: string; cls: string }> = {
-  DRAFT:     { label: "Draft",     cls: "bg-gray-700 text-gray-300" },
-  PUBLISHED: { label: "Published", cls: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" },
-  CANCELLED: { label: "Cancelled", cls: "bg-red-500/20 text-red-400 border border-red-500/30" },
-  COMPLETED: { label: "Completed", cls: "bg-primary-500/20 text-primary-400 border border-primary-500/30" },
+  DRAFT:          { label: "Draft",          cls: "bg-gray-700 text-gray-300" },
+  PUBLISHED:      { label: "Published",      cls: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" },
+  CANCELLED:      { label: "Cancelled",      cls: "bg-red-500/20 text-red-400 border border-red-500/30" },
+  COMPLETED:      { label: "Completed",      cls: "bg-primary-500/20 text-primary-400 border border-primary-500/30" },
+  PENDING_REVIEW: { label: "Pending review", cls: "bg-amber-500/20 text-amber-300 border border-amber-500/30" },
 };
 
 export default async function SellerEventDetailPage({
@@ -28,7 +31,7 @@ export default async function SellerEventDetailPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [event, compOrders, invites, allTiers, participantOrders] = await Promise.all([
+  const [event, compOrders, invites, allTiers, participantOrders, platformConfig] = await Promise.all([
     db.event.findFirst({
       where: { id, sellerId: session.user.id },
       include: {
@@ -64,9 +67,15 @@ export default async function SellerEventDetailPage({
       },
       orderBy: { createdAt: "desc" },
     }),
+    getPlatformConfig(),
   ]);
 
   if (!event) notFound();
+
+  const expansionRequest = event.experienceType === "GROUP_TRIP"
+    ? await db.groupTripExpansionRequest.findUnique({ where: { eventId: id } })
+    : null;
+
 
   const paidCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
   const emailInviteSet = new Set(invites.map((inv: { email: string }) => inv.email.toLowerCase()));
@@ -220,6 +229,37 @@ export default async function SellerEventDetailPage({
           </div>
         </div>
       </div>
+
+      {/* ── PENDING_REVIEW notice for group trips ── */}
+      {event.status === "PENDING_REVIEW" && (
+        <div className="mx-8 mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <svg className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p className="font-semibold text-amber-800 text-sm">Awaiting Lumora review</p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              This group trip has {event.groupTripCapacity} declared guests, which exceeds the {platformConfig.groupTripAutoApproveCap}-guest auto-approve threshold.
+              Our team will review it and notify you by email once approved. You&apos;ll be able to publish it then.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Expansion request status (GROUP_TRIP only) ── */}
+      {event.experienceType === "GROUP_TRIP" && event.status === "PUBLISHED" && (
+        <div className="mx-8 mt-6">
+          <ExpansionRequestButton
+            eventId={event.id}
+            currentCapacity={event.groupTripCapacity ?? 0}
+            totalSold={totalSold}
+            existingRequest={expansionRequest ? {
+              status: expansionRequest.status,
+              requestedAdditional: expansionRequest.requestedAdditional,
+            } : null}
+          />
+        </div>
+      )}
 
       {/* ── Body: 2-column layout ── */}
       <div className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-3">

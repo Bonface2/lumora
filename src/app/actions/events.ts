@@ -6,7 +6,12 @@ import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { initializePayment, generateReference } from "@/lib/paystack";
 import { cancelInstallmentJobs, cancelSellerAlertJobs, scheduleDefaultWarnings, scheduleTicketRevocation } from "@/lib/queue";
-import { sendTicketRevocationNotice, sendTicketReinstatementNotice } from "@/lib/email";
+import {
+  sendTicketRevocationNotice,
+  sendTicketReinstatementNotice,
+  sendGroupTripPendingNotice,
+} from "@/lib/email";
+import { getPlatformConfig } from "@/lib/platformConfig";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -27,7 +32,7 @@ async function uniqueSlug(base: string): Promise<string> {
 
 export async function createEvent(
   input: CreateEventFormData
-): Promise<ApiResponse<{ id: string }>> {
+): Promise<ApiResponse<{ id: string; pendingReview?: boolean }>> {
   const session = await auth();
   if (!session?.user || session.user.role !== "SELLER") {
     return { ok: false, error: "Unauthorized." };
@@ -57,8 +62,14 @@ export async function createEvent(
 
   const slug = await uniqueSlug(slugify(data.title));
 
-  // For PAID events, verify payout method belongs to this seller
-  if (data.eventType === "PAID") {
+  // GROUP_TRIP is always private, force it regardless of what the form sent
+  const isGroupTrip = data.experienceType === "GROUP_TRIP";
+  if (isGroupTrip) {
+    data.isPrivate = true;
+  }
+
+  // For PAID non-group-trip events, verify payout method belongs to this seller
+  if (data.eventType === "PAID" && !isGroupTrip) {
     if (!data.payoutMethodId) {
       return { ok: false, error: "Select a payout method." };
     }
@@ -68,6 +79,24 @@ export async function createEvent(
     if (!payoutMethod) {
       return { ok: false, error: "Selected payout method not found. Please add one in Settings." };
     }
+  }
+
+  // GROUP_TRIP capacity validation
+  let groupTripStatus: "DRAFT" | "PENDING_REVIEW" = "DRAFT";
+  if (isGroupTrip) {
+    if (!data.groupTripGuestCount || data.groupTripGuestCount < 1) {
+      return { ok: false, error: "Enter the expected number of guests for your group trip." };
+    }
+    const config = await getPlatformConfig();
+    // Validate ticket capacity doesn't exceed declared guest count
+    const totalTicketCapacity = data.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
+    if (totalTicketCapacity > data.groupTripGuestCount) {
+      return {
+        ok: false,
+        error: `Total ticket capacity (${totalTicketCapacity}) cannot exceed your declared guest count (${data.groupTripGuestCount}).`,
+      };
+    }
+    groupTripStatus = data.groupTripGuestCount > config.groupTripAutoApproveCap ? "PENDING_REVIEW" : "DRAFT";
   }
 
   const event = await db.event.create({
@@ -81,11 +110,12 @@ export async function createEvent(
       venue: data.venue,
       city: data.city ?? null,
       coverImage: data.coverImage ?? null,
-      payoutMethodId: data.eventType === "PAID" ? (data.payoutMethodId ?? null) : null,
+      payoutMethodId: data.eventType === "PAID" && !isGroupTrip ? (data.payoutMethodId ?? null) : null,
       eventType: data.eventType,
       experienceType: data.experienceType,
       isPrivate: data.isPrivate,
-      status: "DRAFT",
+      groupTripCapacity: isGroupTrip ? data.groupTripGuestCount : null,
+      status: isGroupTrip ? groupTripStatus : "DRAFT",
       ticketCategories: {
         create: data.ticketCategories.map((cat: CreateEventFormData["ticketCategories"][number], i: number) => ({
           name: cat.name,
@@ -118,7 +148,22 @@ export async function createEvent(
     },
   });
 
-  return { ok: true, data: { id: event.id } };
+  // Notify admin if group trip needs review
+  if (isGroupTrip && groupTripStatus === "PENDING_REVIEW") {
+    try {
+      await sendGroupTripPendingNotice({
+        eventId: event.id,
+        eventTitle: data.title,
+        sellerName: session.user.name ?? session.user.email ?? "Unknown seller",
+        sellerEmail: session.user.email ?? "",
+        guestCount: data.groupTripGuestCount!,
+      });
+    } catch (err) {
+      console.error("[createEvent] group trip pending notice failed:", err);
+    }
+  }
+
+  return { ok: true, data: { id: event.id, pendingReview: groupTripStatus === "PENDING_REVIEW" } };
 }
 
 export async function publishEvent(
@@ -133,6 +178,8 @@ export async function publishEvent(
   });
 
   if (!event) return { ok: false, error: "Event not found." };
+  if (event.status === "PENDING_REVIEW")
+    return { ok: false, error: "This group trip is awaiting admin approval before it can be published." };
   if (event.ticketCategories.length === 0)
     return { ok: false, error: "Add at least one ticket category before publishing." };
 
@@ -667,6 +714,61 @@ export async function extendGracePeriod(
   // Reschedule with extended grace period
   await scheduleDefaultWarnings(overduePayment.id, orderId, overduePayment.dueDate, effectiveGraceDays, eventDate, true);
   await scheduleTicketRevocation(orderId, overduePayment.id, overduePayment.dueDate, effectiveGraceDays, eventDate);
+
+  return { ok: true, data: null };
+}
+
+// ─── Group trip capacity expansion ───────────────────────────────────────────
+
+export async function requestCapacityExpansion(
+  eventId: string,
+  input: {
+    requestedAdditional: number;
+    reason: string;
+    invitees: { name?: string; email: string; phone: string }[];
+  }
+): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") return { ok: false, error: "Unauthorized." };
+
+  const event = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+    select: { id: true, title: true, experienceType: true, groupTripCapacity: true, status: true },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.experienceType !== "GROUP_TRIP") return { ok: false, error: "Only group trips can request expansion." };
+  if (event.status !== "PUBLISHED") return { ok: false, error: "Event must be published to request expansion." };
+
+  const existing = await db.groupTripExpansionRequest.findUnique({ where: { eventId } });
+  if (existing) return { ok: false, error: "An expansion request has already been submitted for this event. Only one request is allowed per group." };
+
+  if (input.requestedAdditional < 1) return { ok: false, error: "Must request at least 1 additional slot." };
+  if (input.invitees.length === 0) return { ok: false, error: "Provide the details of the additional guests." };
+  if (!input.reason.trim()) return { ok: false, error: "Provide a reason for the expansion request." };
+
+  await db.groupTripExpansionRequest.create({
+    data: {
+      eventId,
+      requestedAdditional: input.requestedAdditional,
+      inviteeDetails: input.invitees,
+      reason: input.reason,
+      status: "PENDING",
+    },
+  });
+
+  const { sendGroupTripExpansionRequestNotice } = await import("@/lib/email");
+  try {
+    await sendGroupTripExpansionRequestNotice({
+      eventId,
+      eventTitle: event.title,
+      sellerName: session.user.name ?? session.user.email ?? "Unknown seller",
+      sellerEmail: session.user.email ?? "",
+      requestedAdditional: input.requestedAdditional,
+      currentCapacity: event.groupTripCapacity ?? 0,
+    });
+  } catch (err) {
+    console.error("[requestCapacityExpansion] email failed:", err);
+  }
 
   return { ok: true, data: null };
 }

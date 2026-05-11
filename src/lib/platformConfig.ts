@@ -4,6 +4,7 @@ import type { Decimal } from "@prisma/client/runtime/library";
 export type PlatformConfigData = {
   paidFeePercent: number;
   groupTripFlatFee: number;
+  groupTripAutoApproveCap: number;
 };
 
 export async function getPlatformConfig(): Promise<PlatformConfigData> {
@@ -25,6 +26,7 @@ export async function getPlatformConfig(): Promise<PlatformConfigData> {
   return {
     paidFeePercent: Number(config.paidFeePercent),
     groupTripFlatFee: Number(config.groupTripFlatFee),
+    groupTripAutoApproveCap: config.groupTripAutoApproveCap,
   };
 }
 
