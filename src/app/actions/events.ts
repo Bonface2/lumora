@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { initializePayment, generateReference } from "@/lib/paystack";
+import { cancelInstallmentJobs, cancelSellerAlertJobs, scheduleDefaultWarnings, scheduleTicketRevocation } from "@/lib/queue";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -97,6 +98,7 @@ export async function createEvent(
                   create: {
                     initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
                     gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+                    enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
                     scheduleItems: {
                       create: cat.installmentPlan.scheduleItems.map((item: { installmentNumber: number; percentage: number; dueDate: string }) => ({
                         installmentNumber: item.installmentNumber,
@@ -130,11 +132,6 @@ export async function publishEvent(
   if (!event) return { ok: false, error: "Event not found." };
   if (event.ticketCategories.length === 0)
     return { ok: false, error: "Add at least one ticket category before publishing." };
-
-  // Activation fee only applies to FREE PUBLIC events
-  if (event.eventType === "FREE" && event.experienceType === "PUBLIC" && !event.platformFeePaid) {
-    return { ok: false, error: "Please pay the activation fee before publishing a free public event." };
-  }
 
   await db.event.update({
     where: { id: eventId },
@@ -272,6 +269,7 @@ export async function updateEvent(
             data: {
               initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
               gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+              enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
               scheduleItems: {
                 create: cat.installmentPlan.scheduleItems.map((item) => ({
                   installmentNumber: item.installmentNumber,
@@ -287,6 +285,7 @@ export async function updateEvent(
               ticketCategoryId: cat.id,
               initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
               gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+              enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
               scheduleItems: {
                 create: cat.installmentPlan.scheduleItems.map((item) => ({
                   installmentNumber: item.installmentNumber,
@@ -317,6 +316,7 @@ export async function updateEvent(
                   create: {
                     initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
                     gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+                    enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
                     scheduleItems: {
                       create: cat.installmentPlan.scheduleItems.map((item) => ({
                         installmentNumber: item.installmentNumber,
@@ -431,4 +431,114 @@ export async function initiateEventTierUpgrade(
   });
 
   return { ok: true, data: { authorizationUrl: res.data.authorization_url } };
+}
+
+export async function sellerRevokeOrder(
+  orderId: string
+): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      status: true,
+      ticketCategory: {
+        select: { event: { select: { sellerId: true } } },
+      },
+    },
+  });
+
+  if (!order) return { ok: false, error: "Order not found." };
+  if (order.ticketCategory.event.sellerId !== session.user.id) {
+    return { ok: false, error: "Unauthorized." };
+  }
+  if (order.status === "REVOKED") return { ok: false, error: "Order already revoked." };
+  if (order.status === "CANCELLED") return { ok: false, error: "Order is cancelled." };
+
+  await db.$transaction([
+    db.installmentPayment.updateMany({
+      where: { orderId, status: { in: ["PENDING", "OVERDUE"] } },
+      data: { status: "DEFAULTED" },
+    }),
+    db.ticket.updateMany({
+      where: { orderId },
+      data: { status: "REVOKED" },
+    }),
+    db.order.update({
+      where: { id: orderId },
+      data: { status: "REVOKED" },
+    }),
+  ]);
+
+  return { ok: true, data: null };
+}
+
+export async function extendGracePeriod(
+  orderId: string,
+  extraDays: number
+): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  if (extraDays < 1 || extraDays > 30) {
+    return { ok: false, error: "Extension must be between 1 and 30 days." };
+  }
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: {
+      ticketCategory: {
+        include: {
+          event: true,
+          installmentPlan: true,
+        },
+      },
+      payments: {
+        where: { paymentNumber: { gt: 0 } },
+        orderBy: { dueDate: "asc" },
+      },
+    },
+  });
+
+  if (!order) return { ok: false, error: "Order not found." };
+  if (order.ticketCategory.event.sellerId !== session.user.id) {
+    return { ok: false, error: "Unauthorized." };
+  }
+  if (order.status === "REVOKED" || order.status === "CANCELLED" || order.status === "PAID_IN_FULL") {
+    return { ok: false, error: "Cannot extend grace period for this order." };
+  }
+
+  const now = new Date();
+  const overduePayment = order.payments.find(
+    (p) => (p.status === "PENDING" || p.status === "OVERDUE" || p.status === "DEFAULTED") && p.dueDate < now
+  );
+  if (!overduePayment) {
+    return { ok: false, error: "No overdue payment found for this order." };
+  }
+
+  const updatedOrder = await db.order.update({
+    where: { id: orderId },
+    data: { graceExtensionDays: { increment: extraDays } },
+    select: { graceExtensionDays: true },
+  });
+
+  const plan = order.ticketCategory.installmentPlan;
+  const basePlanDays = plan?.gracePeriodDays ?? 7;
+  const effectiveGraceDays = basePlanDays + updatedOrder.graceExtensionDays;
+  const eventDate = order.ticketCategory.event.date;
+
+  // Cancel existing jobs for this payment and seller alerts
+  await cancelInstallmentJobs([overduePayment.id]);
+  await cancelSellerAlertJobs(orderId);
+
+  // Reschedule with extended grace period
+  await scheduleDefaultWarnings(overduePayment.id, orderId, overduePayment.dueDate, effectiveGraceDays, eventDate, true);
+  await scheduleTicketRevocation(orderId, overduePayment.id, overduePayment.dueDate, effectiveGraceDays, eventDate);
+
+  return { ok: true, data: null };
 }

@@ -80,7 +80,7 @@ export default async function HomePage() {
               href="/events"
               className="rounded-xl bg-primary-500 px-8 py-3.5 text-sm font-bold tracking-wide text-white shadow-lg shadow-primary-900/40 hover:bg-primary-400 transition-colors"
             >
-              Explore experiences
+              Explore Experiences
             </Link>
             <Link
               href="/register?role=seller"

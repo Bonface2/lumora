@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { AnalyticsCharts } from "./AnalyticsCharts";
-import { PLATFORM_FEE_PERCENT } from "@/lib/paystack";
+import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
 
 function isOverdue(
   order: { status: string; payments: { paymentNumber: number; dueDate: Date; status: string }[] },
@@ -24,19 +24,22 @@ export default async function AnalyticsPage({
   const { event: selectedEventId } = await searchParams;
   const now = new Date();
 
-  const allEvents = await db.event.findMany({
-    where: { sellerId: session!.user.id },
-    include: {
-      ticketCategories: {
-        include: {
-          orders: {
-            include: { payments: true },
+  const [allEvents, platformConfig] = await Promise.all([
+    db.event.findMany({
+      where: { sellerId: session!.user.id },
+      include: {
+        ticketCategories: {
+          include: {
+            orders: {
+              include: { payments: true },
+            },
           },
         },
       },
-    },
-    orderBy: { date: "asc" },
-  });
+      orderBy: { date: "asc" },
+    }),
+    getPlatformConfig(),
+  ]);
 
   // Filter to selected event if specified, otherwise use all
   const events = selectedEventId
@@ -134,13 +137,19 @@ export default async function AnalyticsPage({
   let sellerNetEarned = 0;
   let grossCollected = 0;
   for (const event of allEvents) {
-    const feePercent = Number(event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
     for (const cat of event.ticketCategories) {
       for (const order of cat.orders) {
         if (order.status === "PENDING" || order.status === "CANCELLED") continue;
         const paid = Number(order.paidAmount);
         grossCollected += paid;
-        sellerNetEarned += paid * (1 - feePercent / 100);
+        const { sellerNet } = computeSellerNet(
+          paid,
+          event.eventType,
+          event.experienceType,
+          event.platformFeePercent,
+          platformConfig
+        );
+        sellerNetEarned += sellerNet;
       }
     }
   }

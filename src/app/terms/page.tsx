@@ -4,7 +4,7 @@ import { Footer } from "@/components/layouts/Footer";
 
 export const metadata: Metadata = { title: "Terms of Service" };
 
-const LAST_UPDATED = "1 May 2025";
+const LAST_UPDATED = "11 May 2026";
 
 function Section({
   number,
@@ -113,33 +113,89 @@ export default function TermsPage() {
           </ul>
         </Section>
 
+        <div id="05" className="scroll-mt-20">
         <Section number="05" title="Installment Plans">
           <p>Where a Seller has enabled installment payments for a ticket category, the following terms apply:</p>
           <ul className="mt-1 space-y-2">
             <Bullet>The Buyer agrees to pay each instalment by its stated due date.</Bullet>
-            <Bullet>Reminder emails are sent automatically 3 days before each due date.</Bullet>
-            <Bullet>If a payment is not received within <strong className="text-gray-800">7 days</strong> of its due date, the ticket reservation will be automatically cancelled.</Bullet>
+            <Bullet>Reminder emails are sent automatically starting the day after a missed due date and each day thereafter until revocation.</Bullet>
+            <Bullet>
+              A ticket will be automatically revoked at whichever of the following occurs <strong className="text-gray-800">first</strong>:
+              <ul className="mt-1.5 ml-4 space-y-1">
+                <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" /><span>The Seller's grace period (set per ticket category) expires after the missed due date; <strong className="text-gray-800">or</strong></span></li>
+                <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" /><span><strong className="text-gray-800">3 days before the event</strong>, regardless of the grace period remaining.</span></li>
+              </ul>
+            </Bullet>
             <Bullet><strong className="text-gray-800">All payments already made under an Installment Plan are non-refundable upon cancellation due to default.</strong></Bullet>
             <Bullet>Lumora is not liable for failed or delayed payment reminders caused by incorrect email addresses or spam filters.</Bullet>
           </ul>
+          <p className="mt-3 font-semibold text-gray-800">Grace period extensions</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              Where a Seller has enabled automatic revocation, they may extend the grace period for an individual Buyer at any point before revocation occurs. Extensions are applied from the Seller&apos;s event dashboard on a per-order basis.
+            </Bullet>
+            <Bullet>
+              An extension only affects that specific Buyer&apos;s order. It does not alter the default grace period configured for the ticket category or for any other Buyer.
+            </Bullet>
+            <Bullet>
+              Extensions reschedule the automatic revocation deadline. The revised deadline is calculated as: <strong className="text-gray-800">original due date + plan grace period + total extension days</strong>, subject still to the hard 3-days-before-event cutoff.
+            </Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">Manual revocation mode</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              Sellers may disable automatic revocation for a ticket category. In this mode, no ticket is revoked automatically — the Seller is solely responsible for monitoring missed payments and revoking tickets manually from their dashboard.
+            </Bullet>
+            <Bullet>
+              Grace period extensions are not applicable when automatic revocation is disabled, as there is no scheduled revocation to reschedule.
+            </Bullet>
+            <Bullet>
+              Lumora bears no liability for Sellers failing to act on missed payments in manual revocation mode.
+            </Bullet>
+          </ul>
         </Section>
+        </div>
 
-        <Section number="06" title="Refunds & Cancellations">
+        <div id="06" className="scroll-mt-20">
+        <Section number="06" title="Ticket & Payment Schedule Transfers">
+          <p>
+            Buyers may transfer ownership of a ticket — or an active installment payment schedule — to another person using the Lumora transfer feature. The following conditions apply:
+          </p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              <strong className="text-gray-800">How it works.</strong> The current ticket holder initiates a transfer from their buyer dashboard by entering the recipient&apos;s email address. Lumora sends the recipient an invitation link. The recipient must accept or decline within <strong className="text-gray-800">24 hours</strong>; if no action is taken the invitation expires automatically.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Unregistered recipients.</strong> If the recipient does not yet have a Lumora account, they will be prompted to register before accepting. The invitation link remains valid for the 24-hour window.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Effect of acceptance.</strong> Upon acceptance, full ownership — including the ticket, any remaining installment obligations, and associated payment history — transfers to the recipient. The original Buyer is relieved of all future payment obligations for that order.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Effect of decline or expiry.</strong> If the recipient declines or the invitation expires, ownership remains with the original Buyer and all installment obligations continue unchanged.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Installment responsibility.</strong> The recipient who accepts a transfer of a payment schedule assumes full liability for all outstanding installments from the date of transfer. Missed payments after transfer are subject to the same grace period and revocation rules as set out in Section 05.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">One pending transfer at a time.</strong> Only one transfer invitation may be active per order at any given time. The sender may cancel a pending invitation before it is accepted.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Non-transferable orders.</strong> Transfers are not permitted for orders with status Revoked, Cancelled, or Defaulted.
+            </Bullet>
+            <Bullet>
+              Lumora is not responsible for transfers made in error. Completed transfers are final and cannot be reversed through the Platform.
+            </Bullet>
+          </ul>
+        </Section>
+        </div>
+
+        <Section number="07" title="Refunds & Cancellations">
           <ul className="space-y-2">
             <Bullet>Refund eligibility is determined by the individual Seller's refund policy, displayed on the event page.</Bullet>
             <Bullet>Installment deposits and partial payments are <strong className="text-gray-800">non-refundable</strong> in the event of Buyer default.</Bullet>
             <Bullet>If a Seller cancels an event, Buyers are entitled to a full refund of all amounts paid to date.</Bullet>
             <Bullet>Refunds, where approved, are processed to the original payment method within 5–10 business days.</Bullet>
-          </ul>
-        </Section>
-
-        <Section number="07" title="Reseller Marketplace">
-          <ul className="space-y-2">
-            <Bullet>Tickets purchased on Lumora may be listed for resale through the Lumora Reseller Marketplace.</Bullet>
-            <Bullet>Each ticket may only be listed for resale once. Duplicate listings are strictly prohibited and will result in immediate account suspension.</Bullet>
-            <Bullet>The resale price may not exceed <strong className="text-gray-800">150% of the original face value</strong> unless the Seller has explicitly permitted otherwise.</Bullet>
-            <Bullet>Once a resale transfer is completed, ownership of the ticket passes irrevocably to the new Buyer.</Bullet>
-            <Bullet>Lumora is not responsible for fraudulent or unauthorised resale listings made with stolen account credentials.</Bullet>
           </ul>
         </Section>
 

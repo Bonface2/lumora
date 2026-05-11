@@ -62,14 +62,12 @@ export function SellerSidebar() {
   return (
     <aside className="flex h-screen w-60 flex-col bg-gray-800">
       {/* Logo */}
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <a href="/" className="flex items-center gap-2.5">
-          <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
-        </a>
+      <a href="/" className="flex h-16 shrink-0 items-center gap-2.5 px-5 hover:opacity-80 transition-opacity">
+        <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         <span className="rounded-full bg-primary-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-400 border border-primary-800">
           Seller
         </span>
-      </div>
+      </a>
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-3 py-3">

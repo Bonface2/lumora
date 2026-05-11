@@ -100,7 +100,12 @@ function LoginForm() {
           </div>
 
           <div>
-            <Label htmlFor="password" required>Password</Label>
+            <div className="mb-1 flex items-center justify-between">
+              <Label htmlFor="password" required>Password</Label>
+              <a href="/forgot-password" className="text-xs font-medium text-primary-600 hover:underline">
+                Forgot password?
+              </a>
+            </div>
             <Input
               id="password"
               type="password"

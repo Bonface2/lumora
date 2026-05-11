@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { setEventPlatformFee, getAdminEvent } from "@/app/actions/admin";
-import { PLATFORM_FEE_PERCENT } from "@/lib/paystack";
+import { setEventPlatformFee, getAdminEvent, getAdminPlatformConfig } from "@/app/actions/admin";
+import type { PlatformConfigData } from "@/lib/platformConfig";
 
 type EventData = Awaited<ReturnType<typeof getAdminEvent>>;
 
 export default function AdminEventFeePage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [event, setEvent] = useState<EventData>(null);
+  const [config, setConfig] = useState<PlatformConfigData | null>(null);
   const [feeInput, setFeeInput] = useState("");
   const [useDefault, setUseDefault] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -19,8 +19,9 @@ export default function AdminEventFeePage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    getAdminEvent(id).then((e) => {
+    Promise.all([getAdminEvent(id), getAdminPlatformConfig()]).then(([e, c]) => {
       setEvent(e);
+      setConfig(c);
       if (e?.platformFeePercent !== null && e?.platformFeePercent !== undefined) {
         setFeeInput(String(Number(e.platformFeePercent)));
         setUseDefault(false);
@@ -52,13 +53,17 @@ export default function AdminEventFeePage() {
     setSuccess(true);
   }
 
-  if (!event) {
+  if (!event || !config) {
     return (
       <div className="flex min-h-full items-center justify-center p-8">
         <p className="text-sm text-gray-400">Loading…</p>
       </div>
     );
   }
+
+  const isFree = event.eventType === "FREE";
+  const isGroupTrip = event.experienceType === "GROUP_TRIP";
+  const defaultFeePercent = config.paidFeePercent;
 
   return (
     <div className="min-h-full bg-gray-50 p-4 sm:p-6 md:p-8">
@@ -75,83 +80,115 @@ export default function AdminEventFeePage() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
-          {/* Use default toggle */}
-          <div className="flex items-start gap-4">
-            <div className="flex-1">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useDefault}
-                  onChange={(e) => {
-                    setUseDefault(e.target.checked);
-                    setError("");
-                    setSuccess(false);
-                    if (e.target.checked) setFeeInput("");
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Use global default ({PLATFORM_FEE_PERCENT}%)
-                </span>
-              </label>
-              <p className="mt-1 ml-7 text-xs text-gray-400">
-                Uncheck to negotiate a custom rate for this event.
-              </p>
+        {isFree ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 text-lg">🎫</span>
+              <div>
+                <p className="font-semibold text-gray-900">No transaction fee applies</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Free events are not charged a transaction fee. The seller paid an activation fee upfront when publishing this event.
+                </p>
+              </div>
             </div>
           </div>
-
-          {/* Custom fee input */}
-          {!useDefault && (
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Custom platform fee (%)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={feeInput}
-                  onChange={(e) => {
-                    setFeeInput(e.target.value);
-                    setError("");
-                    setSuccess(false);
-                  }}
-                  placeholder={`e.g. ${PLATFORM_FEE_PERCENT}`}
-                  className="w-36 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-              {feeInput && !isNaN(parseFloat(feeInput)) && (
-                <p className="mt-2 text-xs text-gray-500">
-                  On a KES 1,000 ticket: Lumora keeps{" "}
-                  <span className="font-semibold text-gray-700">
-                    KES {(1000 * parseFloat(feeInput) / 100).toFixed(2)}
-                  </span>{" "}
-                  and the seller receives{" "}
-                  <span className="font-semibold text-gray-700">
-                    KES {(1000 - 1000 * parseFloat(feeInput) / 100).toFixed(2)}
-                  </span>.
+        ) : isGroupTrip ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 text-lg">🚌</span>
+              <div>
+                <p className="font-semibold text-gray-900">Flat fee per registration</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Group trip events are charged a flat <strong>KES {config.groupTripFlatFee.toLocaleString()}</strong> per registration instead of a percentage. This rate is configured globally.
                 </p>
-              )}
+                <a
+                  href="/admin/platform-fees"
+                  className="mt-3 inline-block text-sm font-semibold text-primary-600 hover:underline"
+                >
+                  Adjust in Platform fees →
+                </a>
+              </div>
             </div>
-          )}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+            {/* Use default toggle */}
+            <div className="flex items-start gap-4">
+              <div className="flex-1">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useDefault}
+                    onChange={(e) => {
+                      setUseDefault(e.target.checked);
+                      setError("");
+                      setSuccess(false);
+                      if (e.target.checked) setFeeInput("");
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Use global default ({defaultFeePercent}%)
+                  </span>
+                </label>
+                <p className="mt-1 ml-7 text-xs text-gray-400">
+                  Uncheck to negotiate a custom rate for this event.
+                </p>
+              </div>
+            </div>
 
-          {error && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-          )}
-          {success && (
-            <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-              Fee updated successfully.
-            </p>
-          )}
+            {/* Custom fee input */}
+            {!useDefault && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Custom platform fee (%)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={feeInput}
+                    onChange={(e) => {
+                      setFeeInput(e.target.value);
+                      setError("");
+                      setSuccess(false);
+                    }}
+                    placeholder={`e.g. ${defaultFeePercent}`}
+                    className="w-36 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+                {feeInput && !isNaN(parseFloat(feeInput)) && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    On a KES 1,000 ticket: Lumora keeps{" "}
+                    <span className="font-semibold text-gray-700">
+                      KES {(1000 * parseFloat(feeInput) / 100).toFixed(2)}
+                    </span>{" "}
+                    and the seller receives{" "}
+                    <span className="font-semibold text-gray-700">
+                      KES {(1000 - 1000 * parseFloat(feeInput) / 100).toFixed(2)}
+                    </span>.
+                  </p>
+                )}
+              </div>
+            )}
 
-          <Button onClick={handleSave} loading={saving} className="w-full">
-            Save fee
-          </Button>
-        </div>
+            {error && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+            )}
+            {success && (
+              <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Fee updated successfully.
+              </p>
+            )}
+
+            <Button onClick={handleSave} loading={saving} className="w-full">
+              Save fee
+            </Button>
+          </div>
+        )}
 
         <p className="mt-4 text-center text-xs text-gray-400">
           This rate applies to all new payments for this event. Existing completed transactions are not affected.

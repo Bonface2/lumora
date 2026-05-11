@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { differenceInDays, format } from "date-fns";
 import { Button } from "@/components/ui/Button";
+import { RevokeButton } from "@/components/RevokeButton";
+import { ExtendGracePeriodButton } from "@/components/ExtendGracePeriodButton";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -63,7 +65,7 @@ export default async function DefaultersPage() {
       ticketCategory: {
         include: {
           event: { select: { title: true } },
-          installmentPlan: { select: { gracePeriodDays: true } },
+          installmentPlan: { select: { gracePeriodDays: true, enforceRevocation: true } },
         },
       },
       payments: {
@@ -128,13 +130,18 @@ export default async function DefaultersPage() {
             const buyer = order.buyer;
             const event = order.ticketCategory.event;
             const grace = order.ticketCategory.installmentPlan?.gracePeriodDays ?? 7;
+            const enforceRevocation = order.ticketCategory.installmentPlan?.enforceRevocation ?? false;
             const paid = Number(order.paidAmount);
             const total = Number(order.totalAmount);
             const balance = total - paid;
             const paidPct = Math.min(100, Math.round((paid / total) * 100));
             const earliestOverdue = order.payments[0];
             const daysOverdue = earliestOverdue ? differenceInDays(now, earliestOverdue.dueDate) : 0;
-            const revocation = calcRevocation(grace, order.payments, order.status, now);
+            const revocation = order.status === "REVOKED"
+              ? { label: "Revoked", level: "terminal" as const }
+              : !enforceRevocation
+              ? { label: "Manual review", level: "none" as const }
+              : calcRevocation(grace, order.payments, order.status, now);
             const styles = levelStyles[revocation.level];
 
             return (
@@ -230,6 +237,12 @@ export default async function DefaultersPage() {
                           </svg>
                           Call
                         </a>
+                      )}
+                      {order.status !== "REVOKED" && enforceRevocation && (
+                        <ExtendGracePeriodButton orderId={order.id} buyerName={buyer.name ?? buyer.email} />
+                      )}
+                      {order.status !== "REVOKED" && (
+                        <RevokeButton orderId={order.id} buyerName={buyer.name ?? buyer.email} />
                       )}
                     </div>
                   </div>

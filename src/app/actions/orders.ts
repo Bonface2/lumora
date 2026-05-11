@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
@@ -7,13 +8,21 @@ import {
   generateReference,
   toKobo,
 } from "@/lib/paystack";
+import { sendTicketConfirmation, sendCartConfirmation, sendInstallmentReceipt, sendBookingConfirmation } from "@/lib/email";
 import type { ApiResponse } from "@/types";
+
+function generateTicketNumber(prefix: string): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(8);
+  const random = Array.from(bytes, (b) => chars[b % chars.length]).join("");
+  return `${prefix}-${random}`;
+}
 
 export async function createOrder(input: {
   ticketCategoryId: string;
   useInstallments: boolean;
   quantity?: number;
-}): Promise<ApiResponse<{ paymentUrl: string }>> {
+}): Promise<ApiResponse<{ paymentUrl: string; ticketNumbers?: string[] }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in to continue." };
 
@@ -55,6 +64,63 @@ export async function createOrder(input: {
   }
 
   const totalAmount = Number(category.price) * quantity;
+
+  // Free event bypass — skip Paystack entirely
+  if (totalAmount === 0) {
+    const buyer = await db.user.findUniqueOrThrow({
+      where: { id: session.user.id },
+      select: { email: true, name: true },
+    });
+    const prefix = category.event.title.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
+    const ticketNumbers: string[] = [];
+
+    await db.$transaction(async (tx) => {
+      const order = await tx.order.create({
+        data: {
+          buyerId: session.user.id,
+          ticketCategoryId: category.id,
+          quantity,
+          totalAmount: 0,
+          paidAmount: 0,
+          status: "PAID_IN_FULL",
+          usesInstallments: false,
+        },
+      });
+      await tx.installmentPayment.create({
+        data: {
+          orderId: order.id,
+          paymentNumber: 0,
+          amount: 0,
+          dueDate: new Date(),
+          status: "PAID",
+        },
+      });
+      for (let i = 0; i < quantity; i++) {
+        const num = generateTicketNumber(prefix);
+        ticketNumbers.push(num);
+        await tx.ticket.create({
+          data: { orderId: order.id, ticketCategoryId: category.id, ticketNumber: num },
+        });
+      }
+      await tx.ticketCategory.update({
+        where: { id: category.id },
+        data: { soldQuantity: { increment: quantity } },
+      });
+    });
+
+    await sendTicketConfirmation({
+      to: buyer.email,
+      name: buyer.name ?? buyer.email,
+      eventTitle: category.event.title,
+      categoryName: category.name,
+      ticketNumbers,
+      eventDate: category.event.date.toISOString(),
+      venue: category.event.venue,
+    });
+
+    return { ok: true, data: { paymentUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer`, ticketNumbers } };
+  }
+
   const plan = input.useInstallments ? category.installmentPlan : null;
 
   const now = new Date();
@@ -156,7 +222,7 @@ export async function createOrder(input: {
 
 export async function createCartOrder(input: {
   items: Array<{ ticketCategoryId: string; quantity: number }>;
-}): Promise<ApiResponse<{ paymentUrl: string }>> {
+}): Promise<ApiResponse<{ paymentUrl: string; ticketNumbers?: string[] }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in to continue." };
   if (!input.items.length) return { ok: false, error: "No items in cart." };
@@ -201,9 +267,83 @@ export async function createCartOrder(input: {
   const enriched = input.items.map((item) => {
     const cat = categories.find((c) => c.id === item.ticketCategoryId)!;
     const quantity = Math.max(1, item.quantity);
-    return { ticketCategoryId: item.ticketCategoryId, quantity, totalAmount: Number(cat.price) * quantity };
+    return { ticketCategoryId: item.ticketCategoryId, cat, quantity, totalAmount: Number(cat.price) * quantity };
   });
   const grandTotal = enriched.reduce((sum, i) => sum + i.totalAmount, 0);
+
+  // Free event bypass — skip Paystack entirely
+  if (grandTotal === 0) {
+    const buyer = await db.user.findUniqueOrThrow({
+      where: { id: session.user.id },
+      select: { email: true, name: true },
+    });
+    const result: Array<{ name: string; quantity: number; ticketNumbers: string[] }> = [];
+
+    await db.$transaction(async (tx) => {
+      for (const item of enriched) {
+        const prefix = item.cat.event.title.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
+        const order = await tx.order.create({
+          data: {
+            buyerId: session.user.id,
+            ticketCategoryId: item.ticketCategoryId,
+            quantity: item.quantity,
+            totalAmount: 0,
+            paidAmount: 0,
+            status: "PAID_IN_FULL",
+            usesInstallments: false,
+          },
+        });
+        await tx.installmentPayment.create({
+          data: {
+            orderId: order.id,
+            paymentNumber: 0,
+            amount: 0,
+            dueDate: new Date(),
+            status: "PAID",
+          },
+        });
+        const ticketNumbers: string[] = [];
+        for (let i = 0; i < item.quantity; i++) {
+          const num = generateTicketNumber(prefix);
+          ticketNumbers.push(num);
+          await tx.ticket.create({
+            data: { orderId: order.id, ticketCategoryId: item.ticketCategoryId, ticketNumber: num },
+          });
+        }
+        await tx.ticketCategory.update({
+          where: { id: item.ticketCategoryId },
+          data: { soldQuantity: { increment: item.quantity } },
+        });
+        result.push({ name: item.cat.name, quantity: item.quantity, ticketNumbers });
+      }
+    });
+
+    const firstCatForEmail = enriched[0].cat;
+    if (result.length === 1) {
+      await sendTicketConfirmation({
+        to: buyer.email,
+        name: buyer.name ?? buyer.email,
+        eventTitle: firstCatForEmail.event.title,
+        categoryName: result[0].name,
+        ticketNumbers: result[0].ticketNumbers,
+        eventDate: firstCatForEmail.event.date.toISOString(),
+        venue: firstCatForEmail.event.venue,
+      });
+    } else {
+      await sendCartConfirmation({
+        to: buyer.email,
+        name: buyer.name ?? buyer.email,
+        eventTitle: firstCatForEmail.event.title,
+        eventDate: firstCatForEmail.event.date.toISOString(),
+        venue: firstCatForEmail.event.venue,
+        categories: result,
+      });
+    }
+
+    const allTicketNumbers = result.flatMap((r) => r.ticketNumbers);
+    return { ok: true, data: { paymentUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer`, ticketNumbers: allTicketNumbers } };
+  }
+
   const reference = generateReference("LUM");
 
   const orderIds = await db.$transaction(async (tx) => {
@@ -350,4 +490,127 @@ export async function payInstallment(
   }
 
   return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+}
+
+// Fallback for when the Paystack webhook doesn't reach the server (e.g. local dev).
+// Called by the callback page after direct payment verification with Paystack.
+// Uses the same idempotency guard as the webhook — safe to call even if the webhook also fires.
+export async function finalizeOrderFromCallback(
+  reference: string,
+  amountNaira: number
+): Promise<ApiResponse<{ isPartial: boolean }>> {
+  // Idempotency guard — only proceed if transaction is still pending
+  const claimed = await db.paystackTransaction.updateMany({
+    where: { reference, status: "pending" },
+    data: { status: "processing" },
+  });
+  if (claimed.count === 0) {
+    return { ok: true, data: { isPartial: false } }; // already handled by webhook
+  }
+
+  const transaction = await db.paystackTransaction.findUnique({
+    where: { reference },
+    include: {
+      order: {
+        include: {
+          buyer: true,
+          ticketCategory: {
+            include: {
+              event: { select: { id: true, title: true, date: true, endDate: true, venue: true, city: true, experienceType: true } },
+              installmentPlan: { include: { scheduleItems: true } },
+            },
+          },
+          payments: { orderBy: { paymentNumber: "asc" } },
+          tickets: true,
+        },
+      },
+    },
+  });
+
+  if (!transaction?.order) return { ok: false, error: "Transaction not found." };
+
+  const { order } = transaction;
+  const { buyer, ticketCategory } = order;
+  const event_ = ticketCategory.event;
+  const txMeta = transaction.metadata as Record<string, unknown> | null;
+  const paymentMode = (txMeta?.paymentMode as string) ?? "installment";
+  const isFollowOnPayment = !!transaction.installmentPaymentId || txMeta?.isFollowOn === true;
+
+  await db.$transaction(async (tx) => {
+    await tx.paystackTransaction.update({ where: { reference }, data: { status: "success" } });
+
+    if (paymentMode === "complete") {
+      for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && (p.status === "PENDING" || p.status === "OVERDUE"))) {
+        await tx.installmentPayment.update({ where: { id: payment.id }, data: { status: "PAID", paidAt: new Date(), paidAmount: payment.amount } });
+      }
+    } else if (paymentMode === "custom") {
+      let remaining = amountNaira;
+      for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING")) {
+        const stillOwed = Number(payment.amount) - Number(payment.paidAmount);
+        if (remaining >= stillOwed - 0.01) {
+          await tx.installmentPayment.update({ where: { id: payment.id }, data: { status: "PAID", paidAt: new Date(), paidAmount: payment.amount } });
+          remaining -= stillOwed;
+          if (remaining <= 0) break;
+        } else {
+          await tx.installmentPayment.update({ where: { id: payment.id }, data: { paidAmount: { increment: remaining } } });
+          break;
+        }
+      }
+    } else if (isFollowOnPayment && transaction.installmentPaymentId) {
+      const installment = order.payments.find((p) => p.id === transaction.installmentPaymentId);
+      await tx.installmentPayment.update({ where: { id: transaction.installmentPaymentId }, data: { status: "PAID", paidAt: new Date(), paidAmount: installment?.amount } });
+    } else {
+      const initialPayment = order.payments.find((p) => p.paymentNumber === 0);
+      if (initialPayment && initialPayment.status !== "PAID") {
+        await tx.installmentPayment.update({ where: { id: initialPayment.id }, data: { status: "PAID", paidAt: new Date(), paidAmount: initialPayment.amount } });
+      }
+    }
+
+    const newPaidAmount = Number(order.paidAmount) + amountNaira;
+    const isFullyPaid = newPaidAmount >= Number(order.totalAmount) - 0.01;
+
+    await tx.order.update({ where: { id: order.id }, data: { paidAmount: newPaidAmount, status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" } });
+
+    if (!isFollowOnPayment) {
+      await tx.ticketCategory.update({ where: { id: ticketCategory.id }, data: { soldQuantity: { increment: order.quantity } } });
+    }
+
+    if (!isFollowOnPayment && order.tickets.length === 0 && event_.experienceType !== "GROUP_TRIP") {
+      const prefix = event_.title.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 4);
+      for (let i = 0; i < order.quantity; i++) {
+        await tx.ticket.create({
+          data: { orderId: order.id, ticketCategoryId: ticketCategory.id, ticketNumber: generateTicketNumber(prefix), status: "ACTIVE", currentOwnerId: buyer.id },
+        });
+      }
+    }
+  });
+
+  const updatedOrder = await db.order.findUniqueOrThrow({ where: { id: order.id }, include: { tickets: true, payments: true } });
+  const isFullyPaid = Number(updatedOrder.paidAmount) >= Number(updatedOrder.totalAmount) - 0.01;
+
+  try {
+    const { format } = await import("date-fns");
+    const eventDate = format(event_.date, "EEEE, dd MMMM yyyy · HH:mm");
+    const venue = `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`;
+
+    if (event_.experienceType === "GROUP_TRIP") {
+      if (!isFollowOnPayment || isFullyPaid) {
+        await sendBookingConfirmation({ to: buyer.email, name: buyer.name ?? "there", eventTitle: event_.title, categoryName: ticketCategory.name, quantity: order.quantity, totalAmount: Number(order.totalAmount), paidAmount: Number(updatedOrder.paidAmount), eventDate, venue });
+      } else {
+        const remainingPayments = updatedOrder.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING").map((p) => ({ installmentNumber: p.paymentNumber, amount: Number(p.amount) - Number(p.paidAmount), dueDate: format(p.dueDate, "dd MMM yyyy") }));
+        await sendInstallmentReceipt({ to: buyer.email, name: buyer.name ?? "there", eventTitle: event_.title, categoryName: ticketCategory.name, eventDate, venue, amountPaid: amountNaira, totalPaid: Number(updatedOrder.paidAmount), totalAmount: Number(order.totalAmount), remainingPayments, isDeposit: false });
+      }
+    } else if (isFullyPaid) {
+      await sendTicketConfirmation({ to: buyer.email, name: buyer.name ?? "there", eventTitle: event_.title, categoryName: ticketCategory.name, ticketNumbers: updatedOrder.tickets.map((t) => t.ticketNumber), eventDate, venue });
+    } else {
+      const remainingPayments = updatedOrder.payments
+        .filter((p) => p.paymentNumber > 0 && p.status === "PENDING")
+        .map((p) => ({ installmentNumber: p.paymentNumber, amount: Number(p.amount) - Number(p.paidAmount), dueDate: format(p.dueDate, "dd MMM yyyy") }));
+      await sendInstallmentReceipt({ to: buyer.email, name: buyer.name ?? "there", eventTitle: event_.title, categoryName: ticketCategory.name, eventDate, venue, amountPaid: amountNaira, totalPaid: Number(updatedOrder.paidAmount), totalAmount: Number(order.totalAmount), remainingPayments, isDeposit: !isFollowOnPayment });
+    }
+  } catch (err) {
+    console.error("[finalizeOrderFromCallback] email threw:", err);
+  }
+
+  return { ok: true, data: { isPartial: !isFullyPaid } };
 }

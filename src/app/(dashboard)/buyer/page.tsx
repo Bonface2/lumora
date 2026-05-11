@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import Link from "next/link";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { InstallmentPaymentStatus } from "@prisma/client";
+import { TransferButton } from "@/components/TransferButton";
 const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
   PENDING: { label: "Pending", cls: "bg-gray-100 text-gray-600" },
   PARTIAL_PAID: { label: "Installments", cls: "bg-amber-100 text-amber-700" },
@@ -149,6 +150,17 @@ export default async function BuyerTicketsPage({
     select: { name: true, email: true },
   });
 
+  // Pending transfers keyed by orderId
+  const pendingTransfers = await db.ticketTransfer.findMany({
+    where: {
+      fromUserId: session!.user.id,
+      status: "PENDING",
+      orderId: { in: orders.map((o) => o.id) },
+    },
+    select: { id: true, orderId: true, toEmail: true, expiresAt: true },
+  });
+  const transferByOrder = Object.fromEntries(pendingTransfers.map((t) => [t.orderId, t]));
+
   return (
     <div className="min-h-full bg-gray-50 font-sans">
       {/* Header */}
@@ -187,7 +199,7 @@ export default async function BuyerTicketsPage({
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Explore experiences
+            Explore Experiences
           </Link>
         </div>
       </div>
@@ -245,7 +257,7 @@ export default async function BuyerTicketsPage({
                 href="/events"
                 className="mt-5 rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-700 transition-colors"
               >
-                Explore experiences
+                Explore Experiences
               </Link>
             )}
           </div>
@@ -365,13 +377,37 @@ export default async function BuyerTicketsPage({
                           return (
                             <p className={`mt-2 flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold ${styles}`}>
                               <span className="shrink-0">{icon}</span>
-                              {rev.label}
+                              <span>
+                                {rev.label}{" "}
+                                <Link href="/terms#05" className="underline underline-offset-2 opacity-70 hover:opacity-100">
+                                  Revocation policy →
+                                </Link>
+                              </span>
                             </p>
                           );
                         })()}
                       </div>
                     )}
                   </div>
+
+                  {/* Transfer — shown for active orders */}
+                  {!["REVOKED", "CANCELLED", "DEFAULTED"].includes(order.status) && (
+                    <div className="flex items-center justify-center gap-2 border-t border-gray-100 py-3.5">
+                      <TransferButton
+                        orderId={order.id}
+                        eventTitle={event.title}
+                        pendingTransfer={transferByOrder[order.id] ?? null}
+                      />
+                      <a
+                        href="/terms#06"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-xl border border-gray-200 px-4 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+                      >
+                        How transfers work
+                      </a>
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -9,6 +9,7 @@ export const installmentItemSchema = z.object({
 export const installmentPlanSchema = z.object({
   initialPaymentPercent: z.number().min(1, "Required").max(99),
   gracePeriodDays: z.number().min(1),
+  enforceRevocation: z.boolean(),
   scheduleItems: z.array(installmentItemSchema),
 });
 
@@ -81,8 +82,8 @@ function installmentDateRefinement(
       ];
       if (item.dueDate < todayStr) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date cannot be in the past", path });
-      } else if (item.dueDate >= eventDateStr) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date must be before the event date", path });
+      } else if (item.dueDate > eventDateStr) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date cannot be after the event date", path });
       } else if (prevDueDate && item.dueDate <= prevDueDate) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date must be after the previous installment", path });
       }

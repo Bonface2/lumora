@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { verifyPayment } from "@/lib/paystack";
 import { db } from "@/lib/db";
+import { finalizeOrderFromCallback } from "@/app/actions/orders";
 import Link from "next/link";
 
 export default async function CallbackPage({
@@ -13,11 +14,13 @@ export default async function CallbackPage({
 
   if (!ref) redirect("/");
 
-  // Verify with Paystack
+  // Verify with Paystack directly
   let verified = false;
+  let amountNaira = 0;
   try {
     const result = await verifyPayment(ref);
     verified = result.data.status === "success";
+    amountNaira = (result.data.amount ?? 0) / 100;
   } catch {
     verified = false;
   }
@@ -39,7 +42,11 @@ export default async function CallbackPage({
     );
   }
 
-  // Fetch order via the transaction reference
+  // Payment verified — ensure the order is finalized even if the webhook hasn't fired yet.
+  // finalizeOrderFromCallback uses an idempotency guard so it's safe if webhook also fires.
+  await finalizeOrderFromCallback(ref, amountNaira);
+
+  // Reload transaction with updated order state
   const transaction = await db.paystackTransaction.findUnique({
     where: { reference: ref },
     include: { order: { include: { tickets: true, ticketCategory: { include: { event: true } } } } },
@@ -47,7 +54,11 @@ export default async function CallbackPage({
 
   const tickets = transaction?.order?.tickets ?? [];
   const event = transaction?.order?.ticketCategory?.event;
-  const isPartial = transaction?.order?.status === "PARTIAL_PAID";
+  const txMeta = transaction?.metadata as Record<string, unknown> | null;
+  const orderStatus = transaction?.order?.status;
+  const isFullyPaid = orderStatus === "PAID_IN_FULL";
+  const isDeposit = txMeta?.useInstallments === true && !isFullyPaid;
+  const isFollowOn = txMeta?.isFollowOn === true && !isFullyPaid;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 text-center">
@@ -57,7 +68,7 @@ export default async function CallbackPage({
         </svg>
       </div>
       <h1 className="text-2xl font-bold text-gray-900">
-        {isPartial ? "Deposit confirmed!" : "You're in!"}
+        {isDeposit ? "Deposit confirmed!" : isFollowOn ? "Payment received!" : "You're in!"}
       </h1>
       {event && (
         <p className="mt-2 text-gray-600">
@@ -76,9 +87,14 @@ export default async function CallbackPage({
           ))}
         </div>
       )}
-      {isPartial && (
+      {isDeposit && (
         <p className="mt-4 max-w-sm text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-3">
-          You&apos;ve paid your deposit. Your remaining installments are scheduled — check your email for the payment schedule.
+          Your deposit is confirmed. Check your email for the installment schedule.
+        </p>
+      )}
+      {isFollowOn && (
+        <p className="mt-4 max-w-sm text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-3">
+          Payment recorded. Check your email for an updated balance.
         </p>
       )}
       <p className="mt-4 text-sm text-gray-500">

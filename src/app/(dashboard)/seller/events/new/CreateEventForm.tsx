@@ -35,6 +35,7 @@ const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
   installmentPlan: {
     initialPaymentPercent: 30,
     gracePeriodDays: 7,
+    enforceRevocation: false,
     scheduleItems: [],
   },
 };
@@ -78,13 +79,20 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
     control,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = methods;
 
   useEffect(() => {
     setValue("eventType", resolvedEventType);
     setValue("experienceType", resolvedExperienceType);
-  }, [resolvedEventType, resolvedExperienceType, setValue]);
+    if (!isEdit) {
+      const defaultEnforce = resolvedExperienceType === "PUBLIC";
+      getValues("ticketCategories").forEach((_, i) => {
+        setValue(`ticketCategories.${i}.installmentPlan.enforceRevocation`, defaultEnforce);
+      });
+    }
+  }, [resolvedEventType, resolvedExperienceType, setValue, getValues, isEdit]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -349,11 +357,6 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
         )}
 
         {/* Ticket categories / Participant spots */}
-        {isGroupTrip && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <span className="font-semibold">Group trip mode:</span> Participants will receive a booking confirmation email. No QR ticket is generated — this experience uses payment tracking only.
-          </div>
-        )}
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div>
@@ -376,6 +379,12 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                 append({
                   ...BLANK_CATEGORY,
                   sortOrder: fields.length,
+                  installmentPlan: {
+                    initialPaymentPercent: 30,
+                    gracePeriodDays: 7,
+                    enforceRevocation: resolvedExperienceType === "PUBLIC",
+                    scheduleItems: [],
+                  },
                 })
               }
             >

@@ -70,14 +70,12 @@ export function AdminSidebar() {
 
   return (
     <aside className="flex h-screen w-60 flex-col bg-gray-800">
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <a href="/" className="flex items-center gap-2.5">
-          <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
-        </a>
+      <a href="/" className="flex h-16 shrink-0 items-center gap-2.5 px-5 hover:opacity-80 transition-opacity">
+        <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         <span className="rounded-full bg-red-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-400 border border-red-800">
           Admin
         </span>
-      </div>
+      </a>
 
       <nav className="flex-1 space-y-0.5 px-3 py-3">
         {nav.map((item) => {

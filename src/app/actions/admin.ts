@@ -2,7 +2,8 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { initiateTransfer, toKobo, generateReference, PLATFORM_FEE_PERCENT } from "@/lib/paystack";
+import { initiateTransfer, toKobo, generateReference } from "@/lib/paystack";
+import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
 import type { ApiResponse } from "@/types";
 
 async function requireAdmin() {
@@ -42,10 +43,35 @@ export async function getAdminEvent(eventId: string) {
       date: true,
       venue: true,
       status: true,
+      eventType: true,
+      experienceType: true,
       platformFeePercent: true,
       seller: { select: { name: true, email: true } },
     },
   });
+}
+
+export async function getAdminPlatformConfig() {
+  if (!(await requireAdmin())) return null;
+  return getPlatformConfig();
+}
+
+export async function updatePlatformConfig(input: {
+  paidFeePercent: number;
+  groupTripFlatFee: number;
+}): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+  if (input.paidFeePercent < 0 || input.paidFeePercent > 100)
+    return { ok: false, error: "Paid fee must be between 0 and 100." };
+  if (input.groupTripFlatFee < 0)
+    return { ok: false, error: "Flat fee must be 0 or greater." };
+
+  await db.platformConfig.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", paidFeePercent: input.paidFeePercent, groupTripFlatFee: input.groupTripFlatFee },
+    update: { paidFeePercent: input.paidFeePercent, groupTripFlatFee: input.groupTripFlatFee },
+  });
+  return { ok: true, data: null };
 }
 
 // ─── Payout management ────────────────────────────────────────────────────────
@@ -54,7 +80,8 @@ export async function getSellerBalances() {
   if (!(await requireAdmin())) return [];
 
   // All fully-paid orders with their event's fee rate and payout method
-  const orders = await db.order.findMany({
+  const [orders, platformConfig] = await Promise.all([
+    db.order.findMany({
     where: { status: "PAID_IN_FULL" },
     select: {
       totalAmount: true,
@@ -66,6 +93,8 @@ export async function getSellerBalances() {
               title: true,
               date: true,
               sellerId: true,
+              eventType: true,
+              experienceType: true,
               platformFeePercent: true,
               payoutMethodId: true,
               payoutMethod: {
@@ -87,7 +116,9 @@ export async function getSellerBalances() {
         },
       },
     },
-  });
+  }),
+    getPlatformConfig(),
+  ]);
 
   // Group earnings by (sellerId, payoutMethodId)
   const earnings: Record<string, number> = {};
@@ -115,12 +146,17 @@ export async function getSellerBalances() {
 
   for (const order of orders) {
     const event = order.ticketCategory.event;
-    const feePercent = Number(event.platformFeePercent ?? PLATFORM_FEE_PERCENT);
     const orderGross = Number(order.totalAmount);
-    const sellerShare = orderGross * (1 - feePercent / 100);
+    const { sellerNet, platformFee, feeLabel } = computeSellerNet(
+      orderGross,
+      event.eventType,
+      event.experienceType,
+      event.platformFeePercent,
+      platformConfig
+    );
     const key = `${event.sellerId}:${event.payoutMethodId ?? "none"}`;
 
-    earnings[key] = (earnings[key] ?? 0) + sellerShare;
+    earnings[key] = (earnings[key] ?? 0) + sellerNet;
     gross[key] = (gross[key] ?? 0) + orderGross;
     rows[key] = {
       seller: { id: event.seller.id, name: event.seller.name, email: event.seller.email },
@@ -140,10 +176,11 @@ export async function getSellerBalances() {
     if (!eventBreakdowns[key]) eventBreakdowns[key] = {};
     const evMap = eventBreakdowns[key];
     if (!evMap[event.id]) {
-      evMap[event.id] = { eventId: event.id, title: event.title, date: event.date, feePercent, grossAmount: 0, sellerNet: 0 };
+      evMap[event.id] = { eventId: event.id, title: event.title, date: event.date, feePercent: platformFee, grossAmount: 0, sellerNet: 0 };
     }
     evMap[event.id].grossAmount += orderGross;
-    evMap[event.id].sellerNet += sellerShare;
+    evMap[event.id].sellerNet += sellerNet;
+    void feeLabel; // used in admin events list, not breakdown
   }
 
   // Successful payouts grouped by (sellerId, payoutMethodId)

@@ -34,8 +34,8 @@ export function PublishButton({
   const isPublished = status === "PUBLISHED";
 
   return (
-    <div>
-      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+    <div className="flex items-center gap-2">
+      {error && <p className="text-xs text-red-400 max-w-xs text-right">{error}</p>}
       <button
         onClick={toggle}
         disabled={loading}

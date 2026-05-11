@@ -38,6 +38,14 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
     name: `ticketCategories.${index}.installmentPlan.scheduleItems`,
   });
 
+  const eventDateStr = useWatch({ control, name: "date" });
+
+  const enforceRevocation = useWatch({
+    control,
+    name: `ticketCategories.${index}.installmentPlan.enforceRevocation`,
+  });
+
+
   const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } =
     useFieldArray({
       control,
@@ -161,7 +169,7 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
                   )}
                 />
               </div>
-              <div>
+              <div className={!enforceRevocation ? "opacity-40 pointer-events-none" : ""}>
                 <Label>Grace period (days)</Label>
                 <Input
                   type="number"
@@ -173,8 +181,36 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
                   )}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Days after due before ticket is revoked
+                  Days after due before ticket is auto-revoked
                 </p>
+              </div>
+            </div>
+
+            {/* Enforce revocation toggle — all paid events */}
+            <div className="flex items-start gap-3 rounded-lg border border-primary-200 bg-white px-4 py-3">
+              <label className="relative mt-0.5 inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  {...register(`ticketCategories.${index}.installmentPlan.enforceRevocation`)}
+                />
+                <span className="h-5 w-9 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+              </label>
+              <div>
+                <p className="text-sm font-medium text-primary-800">Auto-revoke on missed payment</p>
+                <p className="text-xs text-gray-500">
+                  {enforceRevocation
+                    ? "Tickets are automatically revoked after the grace period or 3 days before the event."
+                    : "Disabled — you will manage revocations manually from your event dashboard."}
+                </p>
+                <a
+                  href="/terms#05"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs font-medium text-primary-600 hover:underline"
+                >
+                  Learn how revocation works →
+                </a>
               </div>
             </div>
 
@@ -270,6 +306,25 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
                         value={watch(`ticketCategories.${index}.installmentPlan.scheduleItems.${si}.dueDate`) ?? ""}
                         onChange={(v) => setValue(`ticketCategories.${index}.installmentPlan.scheduleItems.${si}.dueDate`, v, { shouldValidate: true })}
                         error={planErrors?.scheduleItems?.[si]?.dueDate?.message}
+                        disabled={(date) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          if (date < today) return true;
+                          if (eventDateStr) {
+                            const eventDate = new Date(eventDateStr);
+                            eventDate.setHours(0, 0, 0, 0);
+                            if (date > eventDate) return true;
+                          }
+                          if (si > 0) {
+                            const prevDue = scheduleItems?.[si - 1]?.dueDate;
+                            if (prevDue) {
+                              const prevDate = new Date(prevDue);
+                              prevDate.setHours(0, 0, 0, 0);
+                              if (date <= prevDate) return true;
+                            }
+                          }
+                          return false;
+                        }}
                       />
                     </div>
                     <button

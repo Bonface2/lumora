@@ -59,6 +59,7 @@ export default async function EditEventPage({
         ? {
             initialPaymentPercent: Number(cat.installmentPlan.initialPaymentPercent),
             gracePeriodDays: cat.installmentPlan.gracePeriodDays,
+            enforceRevocation: cat.installmentPlan.enforceRevocation,
             scheduleItems: cat.installmentPlan.scheduleItems.map((item) => ({
               installmentNumber: item.installmentNumber,
               percentage: Number(item.percentage),

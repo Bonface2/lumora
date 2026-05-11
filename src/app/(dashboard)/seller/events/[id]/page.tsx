@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { PublishButton } from "./PublishButton";
 import { CompTicketForm } from "@/components/CompTicketForm";
 import { InviteForm } from "@/components/InviteForm";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { RevokeButton } from "@/components/RevokeButton";
 import { createScanToken } from "@/lib/scanToken";
 import type { EventStatus } from "@prisma/client";
 
@@ -24,7 +26,7 @@ export default async function SellerEventDetailPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [event, compOrders, invites, allTiers] = await Promise.all([
+  const [event, compOrders, invites, allTiers, participantOrders] = await Promise.all([
     db.event.findFirst({
       where: { id, sellerId: session.user.id },
       include: {
@@ -48,6 +50,18 @@ export default async function SellerEventDetailPage({
       orderBy: { createdAt: "desc" },
     }),
     db.platformFeeTier.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.order.findMany({
+      where: {
+        ticketCategory: { eventId: id, isComplimentary: false },
+        status: { notIn: ["CANCELLED"] },
+      },
+      include: {
+        buyer: { select: { name: true, email: true } },
+        ticketCategory: { select: { name: true } },
+        payments: { orderBy: { paymentNumber: "asc" } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   if (!event) notFound();
@@ -74,6 +88,7 @@ export default async function SellerEventDetailPage({
   );
   const salesPct = totalAvail > 0 ? Math.round((totalSold / totalAvail) * 100) : 0;
   const cfg = statusConfig[event.status];
+  const now = new Date();
 
   return (
     <div className="min-h-full bg-gray-50 font-sans">
@@ -196,18 +211,7 @@ export default async function SellerEventDetailPage({
                 </button>
               </a>
               {(event.status === "DRAFT" || event.status === "PUBLISHED") && (
-                event.eventType === "FREE" && event.experienceType === "PUBLIC" && !event.platformFeePaid ? (
-                  <a href={`/seller/events/${id}/activate`}>
-                    <button className="flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-400/20 transition-colors">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Activate (KES 1,000)
-                    </button>
-                  </a>
-                ) : (
-                  <PublishButton eventId={id} status={event.status} />
-                )
+                <PublishButton eventId={id} status={event.status} />
               )}
             </div>
           </div>
@@ -294,8 +298,12 @@ export default async function SellerEventDetailPage({
                         <p className="mt-0.5 text-sm font-black text-primary-800">{cat.installmentPlan.gracePeriodDays} days</p>
                       </div>
                       <div className="pl-4">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-primary-400">Resale cutoff</p>
-                        <p className="mt-0.5 text-sm font-black text-primary-800">3 days before</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-primary-400">Auto-revoke</p>
+                        <p className="mt-0.5 text-sm font-black text-primary-800">
+                          {cat.installmentPlan.enforceRevocation
+                            ? "Grace period or 3 days pre-event"
+                            : "Disabled — manual only"}
+                        </p>
                       </div>
                     </div>
 
@@ -447,20 +455,124 @@ export default async function SellerEventDetailPage({
             initialCategories={event.ticketCategories
               .filter((c) => c.isComplimentary)
               .map((c) => ({ id: c.id, name: c.name, totalQuantity: c.totalQuantity, soldQuantity: c.soldQuantity }))}
-            initialOrders={compOrders}
+            initialOrders={compOrders.map((o) => ({
+              id: o.id,
+              buyer: o.buyer,
+              ticketCategory: o.ticketCategory,
+              tickets: o.tickets,
+              createdAt: o.createdAt,
+            }))}
           />
         </div>
       </div>
+
+      {/* ── Attendees / Participants ── */}
+      <div className="px-8 pb-8">
+          <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">
+            {event.experienceType === "GROUP_TRIP" ? "Participants" : "Attendees"}
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+            {participantOrders.length === 0 ? (
+              <p className="px-6 py-10 text-center text-sm text-gray-400">
+                {event.experienceType === "GROUP_TRIP" ? "No bookings yet." : "No ticket sales yet."}
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                    <th className="px-5 py-3 font-semibold text-gray-600">
+                      {event.experienceType === "GROUP_TRIP" ? "Participant" : "Attendee"}
+                    </th>
+                    <th className="px-5 py-3 font-semibold text-gray-600">
+                      {event.experienceType === "GROUP_TRIP" ? "Spot" : "Ticket"}
+                    </th>
+                    <th className="px-5 py-3 font-semibold text-gray-600">Paid</th>
+                    <th className="px-5 py-3 font-semibold text-gray-600">Status</th>
+                    <th className="px-5 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {participantOrders.map((order) => {
+                    const paidAmt = Number(order.paidAmount);
+                    const totalAmt = Number(order.totalAmount);
+
+                    // For DEFAULTED orders, find the earliest overdue payment to show days since default
+                    const overduePayment = order.status === "DEFAULTED"
+                      ? order.payments
+                          .filter((p) => p.paymentNumber > 0 && p.status === "PENDING" && new Date(p.dueDate) < now)
+                          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+                      : null;
+                    const defaultedDays = overduePayment
+                      ? Math.floor((now.getTime() - new Date(overduePayment.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+                      : null;
+
+                    const statusBadge = () => {
+                      if (order.status === "PAID_IN_FULL") return { label: "Paid in full", cls: "bg-emerald-50 text-emerald-700" };
+                      if (order.status === "PARTIAL_PAID") return { label: "Partial", cls: "bg-amber-50 text-amber-700" };
+                      if (order.status === "PENDING")      return { label: "Pending", cls: "bg-gray-100 text-gray-600" };
+                      if (order.status === "REVOKED")      return { label: "Revoked", cls: "bg-red-100 text-red-700" };
+                      if (order.status === "DEFAULTED")    return {
+                        label: defaultedDays !== null ? `Defaulted · ${defaultedDays}d ago` : "Defaulted",
+                        cls: "bg-red-50 text-red-700",
+                      };
+                      return { label: order.status, cls: "bg-gray-100 text-gray-600" };
+                    };
+                    const { label: statusLabel, cls: statusCls } = statusBadge();
+
+                    return (
+                      <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-4">
+                          <p className="font-semibold text-gray-900">{order.buyer.name ?? "—"}</p>
+                          <p className="text-xs text-gray-400">{order.buyer.email}</p>
+                        </td>
+                        <td className="px-5 py-4 text-gray-600">{order.ticketCategory.name}</td>
+                        <td className="px-5 py-4">
+                          <p className="font-semibold text-gray-900">KES {paidAmt.toLocaleString()}</p>
+                          {paidAmt < totalAmt && (
+                            <p className="text-xs text-gray-400">of KES {totalAmt.toLocaleString()}</p>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusCls}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          {order.status !== "REVOKED" && order.status !== "CANCELLED" && (
+                            <RevokeButton orderId={order.id} buyerName={order.buyer.name ?? order.buyer.email} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
 
       {/* ── Invite guests (private events only) ── */}
       {event.isPrivate && (
         <div className="px-8 pb-8">
           <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">Invite guests</h2>
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <p className="mb-4 text-sm text-gray-500">
-              This is a private event. Send personalised email invitations with the direct event link.
-            </p>
-            <InviteForm eventId={id} initialInvites={invites} />
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm space-y-6">
+            {/* Shareable link */}
+            <div>
+              <p className="mb-2 text-sm font-semibold text-gray-900">Shareable invite link</p>
+              <p className="mb-3 text-xs text-gray-500">
+                Copy this link and share it directly via WhatsApp, SMS, or any channel. Anyone with the link can view and register for this event.
+              </p>
+              <CopyLinkButton url={`${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug}`} />
+            </div>
+
+            {/* Email invites */}
+            <div>
+              <p className="mb-2 text-sm font-semibold text-gray-900">Send email invitations</p>
+              <p className="mb-3 text-xs text-gray-500">
+                Send personalised email invites with a direct link to the event.
+              </p>
+              <InviteForm eventId={id} initialInvites={invites} />
+            </div>
           </div>
         </div>
       )}

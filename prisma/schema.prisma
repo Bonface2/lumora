@@ -56,6 +56,14 @@ enum InstallmentPaymentStatus {
   DEFAULTED
 }
 
+enum TransferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
 enum ResaleListingStatus {
   ACTIVE
   SOLD
@@ -85,8 +93,11 @@ model User {
   orders          Order[]
   payouts         Payout[]
   payoutMethods   PayoutMethod[]
-  resaleListings  ResaleListing[]
-  resalePurchases ResaleListing[] @relation("resale_purchases")
+  resaleListings    ResaleListing[]
+  resalePurchases   ResaleListing[]  @relation("resale_purchases")
+  transfersSent        TicketTransfer[]     @relation("TransfersSent")
+  transfersReceived    TicketTransfer[]     @relation("TransfersReceived")
+  passwordResetTokens  PasswordResetToken[]
 
   @@map("users")
 }
@@ -207,6 +218,7 @@ model InstallmentPlan {
   ticketCategoryId      String   @unique
   initialPaymentPercent Decimal  @db.Decimal(5, 2) // e.g. 30.00 = 30%
   gracePeriodDays       Int      @default(7) // days past due before revocation
+  enforceRevocation     Boolean  @default(true) // false = seller handles revocation manually
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -242,7 +254,8 @@ model Order {
   totalAmount      Decimal     @db.Decimal(10, 2)
   paidAmount       Decimal     @default(0) @db.Decimal(10, 2)
   status           OrderStatus @default(PENDING)
-  usesInstallments Boolean     @default(false)
+  usesInstallments  Boolean     @default(false)
+  graceExtensionDays Int       @default(0)
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -251,6 +264,7 @@ model Order {
   tickets        Ticket[]
   payments       InstallmentPayment[]
   transactions   PaystackTransaction[]
+  transfers      TicketTransfer[]
 
   @@index([buyerId])
   @@index([ticketCategoryId])
@@ -385,6 +399,54 @@ model ResaleListing {
   @@index([sellerId])
   @@index([status])
   @@map("resale_listings")
+}
+
+// ─── Ticket / payment-schedule transfers ─────────────────────────────────────
+
+model TicketTransfer {
+  id         String         @id @default(cuid())
+  orderId    String
+  fromUserId String
+  toEmail    String
+  toUserId   String?        // populated once the recipient has an account
+  token      String         @unique @default(cuid())
+  status     TransferStatus @default(PENDING)
+  expiresAt  DateTime
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  order    Order @relation(fields: [orderId], references: [id])
+  fromUser User  @relation("TransfersSent",     fields: [fromUserId], references: [id])
+  toUser   User? @relation("TransfersReceived", fields: [toUserId],   references: [id])
+
+  @@index([orderId])
+  @@index([token])
+  @@map("ticket_transfers")
+}
+
+// ─── Password reset tokens ────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+// ─── Platform transaction fee config (singleton) ─────────────────────────────
+
+model PlatformConfig {
+  id               String   @id @default("singleton")
+  paidFeePercent   Decimal  @default(6)  @db.Decimal(5, 2)
+  groupTripFlatFee Decimal  @default(50) @db.Decimal(10, 2)
+  updatedAt        DateTime @updatedAt
+
+  @@map("platform_config")
 }
 
 // ─── Platform fee tiers (admin-configurable) ─────────────────────────────────

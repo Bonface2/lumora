@@ -110,12 +110,16 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
         const remaining = cat.totalQuantity - cat.soldQuantity;
 
         return (
-          <button
+          <div
             key={cat.id}
-            type="button"
-            disabled={soldOut}
-            onClick={() => toggleCart(cat.id)}
-            className={`w-full rounded-xl border-2 p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            role="button"
+            tabIndex={soldOut ? -1 : 0}
+            aria-disabled={soldOut}
+            onClick={() => !soldOut && toggleCart(cat.id)}
+            onKeyDown={(e) => e.key === "Enter" && !soldOut && toggleCart(cat.id)}
+            className={`w-full rounded-xl border-2 p-4 text-left transition-all ${
+              soldOut ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+            } ${
               inCart
                 ? "border-primary-500 bg-primary-50"
                 : "border-gray-200 bg-white hover:border-primary-300"
@@ -230,7 +234,7 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
                 )}
               </div>
             )}
-          </button>
+          </div>
         );
       })}
 
@@ -282,6 +286,8 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
                   (singleCat!.price * singleEntry[1] * singleCat!.installmentPlan!.initialPaymentPercent) /
                     100
                 ).toLocaleString()} deposit${singleEntry[1] > 1 ? ` × ${singleEntry[1]} tickets` : ""}`
+              : totalAmount === 0
+              ? `Get ${totalTickets > 1 ? `${totalTickets} free tickets` : "free ticket"}`
               : `Buy ${totalTickets > 1 ? `${totalTickets} tickets` : "ticket"} — KES ${totalAmount.toLocaleString()}`}
           </Button>
         </>

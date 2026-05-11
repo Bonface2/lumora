@@ -402,6 +402,7 @@ export async function sendInstallmentReceipt({
   totalPaid,
   totalAmount,
   remainingPayments,
+  isDeposit = false,
 }: {
   to: string;
   name: string;
@@ -413,6 +414,7 @@ export async function sendInstallmentReceipt({
   totalPaid: number;
   totalAmount: number;
   remainingPayments: { installmentNumber: number; amount: number; dueDate: string }[];
+  isDeposit?: boolean;
 }) {
   const fmt = (n: number) => `KES ${n.toLocaleString()}`;
 
@@ -458,13 +460,17 @@ export async function sendInstallmentReceipt({
     </table>
   `;
 
+  const headline = isDeposit ? "Deposit confirmed" : "Payment received";
+  const intro = isDeposit
+    ? `Your deposit of <strong style="color:#0f172a;">${fmt(amountPaid)}</strong> for <strong style="color:#0f172a;">${eventTitle}</strong> is confirmed. Your remaining installments are listed below.`
+    : `We've received <strong style="color:#0f172a;">${fmt(amountPaid)}</strong> for <strong style="color:#0f172a;">${eventTitle}</strong>.`;
+
   const body = `
     <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
-      Payment received, ${name}!
+      ${headline}, ${name}!
     </p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
-      We've received <strong style="color:#0f172a;">${fmt(amountPaid)}</strong> for
-      <strong style="color:#0f172a;">${eventTitle}</strong>.
+      ${intro}
     </p>
 
     ${infoCard([
@@ -484,11 +490,11 @@ export async function sendInstallmentReceipt({
   return send({
     from: FROM_EMAIL,
     to,
-    subject: `Payment received — ${eventTitle}`,
+    subject: isDeposit ? `Deposit confirmed — ${eventTitle}` : `Payment received — ${eventTitle}`,
     html: shell({
-      preheader: `${fmt(amountPaid)} received for ${eventTitle}.`,
-      headline: "Payment received",
-      label: "Installment update",
+      preheader: isDeposit ? `Your deposit of ${fmt(amountPaid)} for ${eventTitle} is confirmed.` : `${fmt(amountPaid)} received for ${eventTitle}.`,
+      headline,
+      label: isDeposit ? "Deposit confirmed" : "Installment update",
       body,
     }),
   });
@@ -772,13 +778,27 @@ export async function sendBookingConfirmation({
 }) {
   const isFullyPaid = paidAmount >= totalAmount - 0.01;
 
-  const body = `
+  const body = isFullyPaid ? `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      You're in, ${name}!
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      All payments are complete. Your ${quantity > 1 ? `${quantity} spots are` : "spot is"} fully confirmed for <strong style="color:#0f172a;">${eventTitle}</strong>.
+    </p>
+
+    ${infoCard([
+      { label: "Experience",   value: eventTitle },
+      { label: "Tier",         value: categoryName },
+      { label: "Spots booked", value: String(quantity) },
+      { label: "Date",         value: eventDate },
+      { label: "Location",     value: venue },
+    ])}
+  ` : `
     <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
       You're booked, ${name}!
     </p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
-      Your ${quantity > 1 ? `${quantity} spots are` : "spot is"} confirmed for this experience.
-      ${isFullyPaid ? "Payment is complete." : "Your first payment has been received."}
+      Your ${quantity > 1 ? `${quantity} spots are` : "spot is"} confirmed for <strong style="color:#0f172a;">${eventTitle}</strong>. Your first payment has been received — remaining installments are listed below.
     </p>
 
     ${infoCard([
@@ -789,17 +809,306 @@ export async function sendBookingConfirmation({
       { label: "Location",     value: venue },
     ])}
 
-    ${!isFullyPaid ? `<div style="margin-top:20px;">${progressBar(paidAmount, totalAmount)}</div>` : ""}
+    <div style="margin-top:20px;">${progressBar(paidAmount, totalAmount)}</div>
   `;
 
   return send({
     from: FROM_EMAIL,
     to,
-    subject: `Booking confirmed: ${eventTitle}`,
+    subject: isFullyPaid ? `You're in: ${eventTitle}` : `Booking confirmed: ${eventTitle}`,
     html: shell({
-      preheader: `You're booked for ${eventTitle}!`,
-      headline: eventTitle,
-      label: "Booking confirmed",
+      preheader: isFullyPaid ? `All payments complete for ${eventTitle}. See you there!` : `You're booked for ${eventTitle}!`,
+      headline: isFullyPaid ? "You're in!" : eventTitle,
+      label: isFullyPaid ? "Payment complete" : "Booking confirmed",
+      body,
+    }),
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   9. Ticket transfer invite
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendTransferInvite({
+  to,
+  name,
+  fromName,
+  eventTitle,
+  categoryName,
+  eventDate,
+  venue,
+  acceptUrl,
+  expiresAt,
+  isInstallment,
+}: {
+  to: string;
+  name: string;
+  fromName: string;
+  eventTitle: string;
+  categoryName: string;
+  eventDate: string;
+  venue: string;
+  acceptUrl: string;
+  expiresAt: string;
+  isInstallment: boolean;
+}) {
+  const transferType = isInstallment ? "payment schedule (installment plan)" : "fully paid ticket";
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      <strong style="color:#0f172a;">${fromName}</strong> is transferring their <strong style="color:#0f172a;">${transferType}</strong> for <strong style="color:#0f172a;">${eventTitle}</strong> to you. Review the details below and accept to take ownership.
+    </p>
+
+    ${infoCard([
+      { label: "Event",       value: eventTitle },
+      { label: "Ticket type", value: categoryName },
+      { label: "Date",        value: eventDate },
+      { label: "Venue",       value: venue },
+    ])}
+
+    <div style="margin-top:28px;">
+      ${ctaButton("Review &amp; Accept Transfer", acceptUrl)}
+    </div>
+
+    <p style="margin:20px 0 0;font-size:13px;color:#64748b;line-height:1.5;">
+      This offer expires on <strong style="color:#0f172a;">${expiresAt}</strong>.
+    </p>
+
+    <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+      If you don't recognise this invitation, you can safely ignore this email.
+    </p>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `${fromName} wants to transfer their ticket — ${eventTitle}`,
+    html: shell({
+      preheader: `You've been invited to take over a ticket for ${eventTitle}.`,
+      headline: "Ticket transfer invitation",
+      label: "Transfer offer",
+      body,
+    }),
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   10. Ticket transfer notification (sender update)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendTransferNotification({
+  to,
+  name,
+  eventTitle,
+  toName,
+  wasAccepted,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+  toName: string;
+  wasAccepted: boolean;
+}) {
+  const headline = wasAccepted ? "Transfer accepted" : "Transfer declined";
+  const bodyText = wasAccepted
+    ? `<strong style="color:#0f172a;">${toName}</strong> has accepted your transfer for <strong style="color:#0f172a;">${eventTitle}</strong>. The ticket and any remaining payments are now theirs.`
+    : `<strong style="color:#0f172a;">${toName}</strong> has declined your transfer for <strong style="color:#0f172a;">${eventTitle}</strong>. Your ticket remains with you.`;
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      ${bodyText}
+    </p>
+  `;
+
+  const subject = `Transfer ${wasAccepted ? "accepted" : "declined"} — ${eventTitle}`;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    html: shell({
+      preheader: subject,
+      headline,
+      label: "Transfer update",
+      body,
+    }),
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSWORD RESET
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SELLER ALERTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendSellerDefaultAlert({
+  to,
+  sellerName,
+  buyerName,
+  eventTitle,
+  categoryName,
+  overdueAmount,
+  defaultersUrl,
+}: {
+  to: string;
+  sellerName: string;
+  buyerName: string;
+  eventTitle: string;
+  categoryName: string;
+  overdueAmount: string;
+  defaultersUrl: string;
+}) {
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${sellerName},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      A buyer has missed an installment payment and is now in default. Review the details below and decide whether to extend the grace period or proceed with revocation.
+    </p>
+
+    ${infoCard([
+      { label: "Buyer",        value: buyerName },
+      { label: "Event",        value: eventTitle },
+      { label: "Ticket type",  value: categoryName },
+      { label: "Overdue",      value: overdueAmount },
+    ])}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#92400e;line-height:1.5;">
+          <strong>What happens next:</strong> If the buyer does not pay within the grace period,
+          their ticket will be automatically revoked. You can extend the grace period or revoke
+          manually from your dashboard.
+        </td>
+      </tr>
+    </table>
+
+    ${ctaButton("View Defaulters", defaultersUrl, "#d97706")}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Missed payment: ${buyerName} — ${eventTitle}`,
+    html: shell({
+      preheader: `${buyerName} has missed an installment for ${eventTitle}.`,
+      headline: "Buyer in default",
+      label: "Payment alert",
+      accentColor: "#d97706",
+      body,
+      footerNote: "You're receiving this as the event organiser.",
+    }),
+  });
+}
+
+export async function sendSellerPreRevocationAlert({
+  to,
+  sellerName,
+  buyerName,
+  eventTitle,
+  categoryName,
+  overdueAmount,
+  defaultersUrl,
+}: {
+  to: string;
+  sellerName: string;
+  buyerName: string;
+  eventTitle: string;
+  categoryName: string;
+  overdueAmount: string;
+  defaultersUrl: string;
+}) {
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${sellerName},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      A buyer's ticket is scheduled for revocation <strong style="color:#0f172a;">tomorrow</strong> due to a missed installment payment. If you'd like to extend their grace period, do so now from your dashboard.
+    </p>
+
+    ${infoCard([
+      { label: "Buyer",        value: buyerName },
+      { label: "Event",        value: eventTitle },
+      { label: "Ticket type",  value: categoryName },
+      { label: "Overdue",      value: overdueAmount },
+    ])}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#991b1b;line-height:1.5;">
+          <strong>⚠ Revocation tomorrow:</strong> The ticket will be automatically revoked in
+          approximately 24 hours if no action is taken.
+        </td>
+      </tr>
+    </table>
+
+    ${ctaButton("Manage Grace Period", defaultersUrl, "#dc2626")}
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Revocation tomorrow: ${buyerName} — ${eventTitle}`,
+    html: shell({
+      preheader: `${buyerName}'s ticket for ${eventTitle} will be revoked tomorrow.`,
+      headline: "Revocation in 24 hours",
+      label: "Urgent alert",
+      accentColor: "#dc2626",
+      body,
+      footerNote: "You're receiving this as the event organiser.",
+    }),
+  });
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  name,
+  resetUrl,
+}: {
+  to: string;
+  name: string;
+  resetUrl: string;
+}) {
+  const subject = "Reset your Lumora password";
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      We received a request to reset the password for your Lumora account. Click the button below to choose a new password. This link expires in <strong style="color:#0f172a;">1 hour</strong>.
+    </p>
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${resetUrl}"
+         style="display:inline-block;background:#0d9488;color:#fff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:12px;text-decoration:none;letter-spacing:0.01em;">
+        Reset password
+      </a>
+    </div>
+    <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">
+      If you didn&apos;t request this, you can safely ignore this email. Your password won&apos;t change.
+    </p>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    html: shell({
+      preheader: "Reset your Lumora password — link valid for 1 hour",
+      headline: "Password reset",
+      label: "Security",
       body,
     }),
   });

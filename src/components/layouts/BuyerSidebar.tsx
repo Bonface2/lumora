@@ -14,20 +14,11 @@ const nav = [
     ),
   },
   {
-    label: "Explore",
+    label: "Explore Experiences",
     href: "/events",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Resale Market",
-    href: "/market",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
       </svg>
     ),
   },
@@ -53,14 +44,12 @@ export function BuyerSidebar() {
   return (
     <aside className="flex h-screen w-60 flex-col bg-gray-800">
       {/* Logo */}
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <a href="/" className="flex items-center gap-2.5">
-          <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
-        </a>
+      <a href="/" className="flex h-16 shrink-0 items-center gap-2.5 px-5 hover:opacity-80 transition-opacity">
+        <span className="text-xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         <span className="rounded-full bg-primary-900/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-400 border border-primary-800">
           Buyer
         </span>
-      </div>
+      </a>
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-3 py-3">

@@ -127,7 +127,7 @@ describe("createOrder", () => {
       mocks.db.ticketCategory.aggregate.mockResolvedValue({ _sum: { soldQuantity: 20 } });
       const result = await createOrder({ ticketCategoryId: "cat1", useInstallments: false });
       expect(result.ok).toBe(false);
-      expect(result.error).toMatch(/registration limit/i);
+      expect(!result.ok && result.error).toMatch(/registration limit/i);
     });
 
     it("blocks when requested quantity would exceed remaining capacity", async () => {
@@ -136,7 +136,7 @@ describe("createOrder", () => {
       mocks.db.ticketCategory.aggregate.mockResolvedValue({ _sum: { soldQuantity: 18 } }); // 2 spots left
       const result = await createOrder({ ticketCategoryId: "cat1", useInstallments: false, quantity: 5 });
       expect(result.ok).toBe(false);
-      expect(result.error).toMatch(/2 spots left/i);
+      expect(!result.ok && result.error).toMatch(/2 spots left/i);
     });
 
     it("allows registration when within remaining capacity", async () => {

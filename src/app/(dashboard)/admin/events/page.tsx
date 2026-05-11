@@ -1,16 +1,19 @@
 import { db } from "@/lib/db";
-import { PLATFORM_FEE_PERCENT } from "@/lib/paystack";
+import { getPlatformConfig } from "@/lib/platformConfig";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminEventsPage() {
-  const events = await db.event.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      seller: { select: { name: true, email: true } },
-      _count: { select: { ticketCategories: true } },
-    },
-  });
+  const [events, config] = await Promise.all([
+    db.event.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        seller: { select: { name: true, email: true } },
+        _count: { select: { ticketCategories: true } },
+      },
+    }),
+    getPlatformConfig(),
+  ]);
 
   return (
     <div className="min-h-full bg-gray-50 p-4 sm:p-6 md:p-8">
@@ -18,7 +21,7 @@ export default async function AdminEventsPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-black text-gray-900">Events</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Set a custom platform fee for any event. Leave blank to use the global default ({PLATFORM_FEE_PERCENT}%).
+            Platform fees by event type: paid events {config.paidFeePercent}%, group trips KES {config.groupTripFlatFee} flat, free events activation fee only. Adjust global rates in Platform fees.
           </p>
         </div>
 
@@ -35,10 +38,16 @@ export default async function AdminEventsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {events.map((event) => {
-                const fee = event.platformFeePercent !== null
-                  ? `${Number(event.platformFeePercent)}%`
-                  : `${PLATFORM_FEE_PERCENT}% (default)`;
-                const isCustom = event.platformFeePercent !== null;
+                const isFree = event.eventType === "FREE";
+                const isGroupTrip = event.experienceType === "GROUP_TRIP";
+                const fee = isFree
+                  ? "Activation fee"
+                  : isGroupTrip
+                  ? `KES ${config.groupTripFlatFee} flat`
+                  : event.platformFeePercent !== null
+                  ? `${Number(event.platformFeePercent)}% (custom)`
+                  : `${config.paidFeePercent}% (default)`;
+                const isCustom = !isFree && !isGroupTrip && event.platformFeePercent !== null;
 
                 return (
                   <tr key={event.id} className="hover:bg-gray-50 transition-colors">
@@ -71,12 +80,14 @@ export default async function AdminEventsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <a
-                        href={`/admin/events/${event.id}`}
-                        className="text-sm font-semibold text-primary-600 hover:underline"
-                      >
-                        Edit fee
-                      </a>
+                      {!isFree && !isGroupTrip && (
+                        <a
+                          href={`/admin/events/${event.id}`}
+                          className="text-sm font-semibold text-primary-600 hover:underline"
+                        >
+                          Edit fee
+                        </a>
+                      )}
                     </td>
                   </tr>
                 );

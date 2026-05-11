@@ -11,6 +11,7 @@ export const QUEUES = {
   INSTALLMENT_REMINDER: "installment-reminder",
   DEFAULT_WARNING: "default-warning",
   TICKET_REVOCATION: "ticket-revocation",
+  SELLER_ALERT: "seller-alert",
   // RESALE: RESALE_EXPIRY: "resale-expiry",
 } as const;
 
@@ -33,6 +34,11 @@ export interface TicketRevocationJob {
   installmentPaymentId: string;
 }
 
+export interface SellerAlertJob {
+  orderId: string;
+  alertType: "defaulted" | "pre_revocation";
+}
+
 // RESALE: export interface ResaleExpiryJob { resaleListingId: string; }
 
 // ─── Lazy singletons ──────────────────────────────────────────────────────────
@@ -41,6 +47,7 @@ let _connection: IORedis | null = null;
 let _installmentReminderQueue: Queue | null = null;
 let _defaultWarningQueue: Queue | null = null;
 let _ticketRevocationQueue: Queue | null = null;
+let _sellerAlertQueue: Queue | null = null;
 // RESALE: let _resaleExpiryQueue: Queue | null = null;
 
 function getConnection(): IORedis {
@@ -81,6 +88,15 @@ function getTicketRevocationQueue(): Queue {
   return _ticketRevocationQueue;
 }
 
+function getSellerAlertQueue(): Queue {
+  if (!_sellerAlertQueue) {
+    _sellerAlertQueue = new Queue(QUEUES.SELLER_ALERT, {
+      connection: getConnection(),
+    });
+  }
+  return _sellerAlertQueue;
+}
+
 /* RESALE:
 function getResaleExpiryQueue(): Queue {
   if (!_resaleExpiryQueue) {
@@ -118,26 +134,74 @@ export async function scheduleInstallmentReminder(
 }
 
 // Schedules a daily default warning from day 1 after due date until revocation.
+// Revocation fires at the earlier of: dueDate + gracePeriodDays, or eventDate − 3 days.
 export async function scheduleDefaultWarnings(
   installmentPaymentId: string,
   orderId: string,
   dueDate: Date,
-  gracePeriodDays: number
+  gracePeriodDays: number,
+  eventDate?: Date,
+  enforceRevocation = true
 ) {
-  const queue = getDefaultWarningQueue();
   const now = Date.now();
+  const sellerQueue = getSellerAlertQueue();
 
-  for (let dayAfterDue = 1; dayAfterDue <= gracePeriodDays; dayAfterDue++) {
+  // Seller "defaulted" alert fires for all plans — seller always needs to know about a miss.
+  const defaultedAt = new Date(dueDate);
+  defaultedAt.setDate(defaultedAt.getDate() + 1);
+  const defaultedDelay = defaultedAt.getTime() - now;
+  if (defaultedDelay > 0) {
+    await sellerQueue.add(
+      "seller-alert",
+      { orderId, alertType: "defaulted" } satisfies SellerAlertJob,
+      { delay: defaultedDelay, jobId: `seller-alert-defaulted-${orderId}`, removeOnComplete: true }
+    );
+  }
+
+  // Everything below only applies when auto-revocation is enabled.
+  if (!enforceRevocation) return;
+
+  const queue = getDefaultWarningQueue();
+
+  const graceExpiry = new Date(dueDate);
+  graceExpiry.setDate(graceExpiry.getDate() + gracePeriodDays);
+
+  const eventCutoff = eventDate
+    ? new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000)
+    : null;
+
+  const revocationDate =
+    eventCutoff && eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
+
+  let dayAfterDue = 1;
+  while (true) {
     const fireAt = new Date(dueDate);
     fireAt.setDate(fireAt.getDate() + dayAfterDue);
-    const delay = fireAt.getTime() - now;
-    if (delay <= 0) continue;
 
-    const daysUntilRevocation = gracePeriodDays - dayAfterDue;
-    await queue.add(
-      "send-default-warning",
-      { installmentPaymentId, orderId, daysUntilRevocation } satisfies DefaultWarningJob,
-      { delay, jobId: `default-warning-${installmentPaymentId}-d${dayAfterDue}`, removeOnComplete: true }
+    if (fireAt >= revocationDate) break;
+
+    const delay = fireAt.getTime() - now;
+    if (delay > 0) {
+      const msLeft = revocationDate.getTime() - fireAt.getTime();
+      const daysUntilRevocation = Math.round(msLeft / (24 * 60 * 60 * 1000));
+      await queue.add(
+        "send-default-warning",
+        { installmentPaymentId, orderId, daysUntilRevocation } satisfies DefaultWarningJob,
+        { delay, jobId: `default-warning-${installmentPaymentId}-d${dayAfterDue}`, removeOnComplete: true }
+      );
+    }
+    dayAfterDue++;
+  }
+
+  // Seller pre-revocation alert: 1 day before auto-revocation fires.
+  const preRevAt = new Date(revocationDate);
+  preRevAt.setDate(preRevAt.getDate() - 1);
+  const preRevDelay = preRevAt.getTime() - now;
+  if (preRevDelay > 0 && preRevAt.getTime() > defaultedAt.getTime()) {
+    await sellerQueue.add(
+      "seller-alert",
+      { orderId, alertType: "pre_revocation" } satisfies SellerAlertJob,
+      { delay: preRevDelay, jobId: `seller-alert-prerevocation-${orderId}`, removeOnComplete: true }
     );
   }
 }
@@ -146,10 +210,19 @@ export async function scheduleTicketRevocation(
   orderId: string,
   installmentPaymentId: string,
   dueDate: Date,
-  gracePeriodDays: number
+  gracePeriodDays: number,
+  eventDate?: Date
 ) {
-  const revocationDate = new Date(dueDate);
-  revocationDate.setDate(revocationDate.getDate() + gracePeriodDays);
+  const graceExpiry = new Date(dueDate);
+  graceExpiry.setDate(graceExpiry.getDate() + gracePeriodDays);
+
+  // Also revoke 3 days before the event so organisers have a clean list
+  const eventCutoff = eventDate ? new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000) : null;
+
+  // Fire at the earlier of the two deadlines
+  const revocationDate =
+    eventCutoff && eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
+
   const delay = revocationDate.getTime() - Date.now();
   if (delay <= 0) return;
 
@@ -221,5 +294,13 @@ export function computeResaleExpiry(
   return expiry;
 }
 */
+
+export async function cancelSellerAlertJobs(orderId: string): Promise<void> {
+  const queue = getSellerAlertQueue();
+  const defaultedJob = await queue.getJob(`seller-alert-defaulted-${orderId}`);
+  await defaultedJob?.remove();
+  const preRevJob = await queue.getJob(`seller-alert-prerevocation-${orderId}`);
+  await preRevJob?.remove();
+}
 
 export { getConnection as connection };

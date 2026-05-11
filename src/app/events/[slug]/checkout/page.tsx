@@ -50,6 +50,7 @@ function CheckoutContent() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
+  const [freeSuccess, setFreeSuccess] = useState<{ ticketNumbers: string[]; eventTitle: string; eventSlug: string } | null>(null);
 
   // Phone collection for users who signed up via Google and haven't added one yet
   const [phoneNeeded, setPhoneNeeded] = useState(false);
@@ -114,10 +115,20 @@ function CheckoutContent() {
 
       const res = await createCartOrder({ items: parsed });
       if (!res.ok) { setError(res.error); setPaying(false); return; }
+      if (res.data.ticketNumbers) {
+        setFreeSuccess({ ticketNumbers: res.data.ticketNumbers, eventTitle: cartItems[0]?.preview.eventTitle ?? "", eventSlug: cartItems[0]?.preview.eventSlug ?? "" });
+        setPaying(false);
+        return;
+      }
       window.location.href = res.data.paymentUrl;
     } else {
       const res = await createOrder({ ticketCategoryId: categoryId, useInstallments, quantity: singleQty });
       if (!res.ok) { setError(res.error); setPaying(false); return; }
+      if (res.data.ticketNumbers) {
+        setFreeSuccess({ ticketNumbers: res.data.ticketNumbers, eventTitle: singleCategory?.eventTitle ?? "", eventSlug: singleCategory?.eventSlug ?? "" });
+        setPaying(false);
+        return;
+      }
       window.location.href = res.data.paymentUrl;
     }
   }
@@ -126,6 +137,70 @@ function CheckoutContent() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (freeSuccess) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 py-12">
+        <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white shadow-xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-primary-600 px-6 py-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
+              <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-black text-white">You&apos;re in!</h1>
+            <p className="mt-1 text-sm text-white/80">
+              {freeSuccess.ticketNumbers.length > 1
+                ? `${freeSuccess.ticketNumbers.length} tickets confirmed for`
+                : "Your ticket is confirmed for"}{" "}
+              <span className="font-semibold">{freeSuccess.eventTitle}</span>
+            </p>
+          </div>
+
+          {/* Ticket numbers */}
+          <div className="px-6 py-6 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              {freeSuccess.ticketNumbers.length > 1 ? "Your ticket numbers" : "Your ticket number"}
+            </p>
+            {freeSuccess.ticketNumbers.map((num, i) => (
+              <div
+                key={num}
+                className="flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50 px-4 py-3"
+              >
+                {freeSuccess.ticketNumbers.length > 1 && (
+                  <span className="mr-3 text-xs font-bold text-primary-400">#{i + 1}</span>
+                )}
+                <span className="flex-1 font-mono text-base font-bold tracking-widest text-primary-700">
+                  {num}
+                </span>
+              </div>
+            ))}
+
+            <p className="text-xs text-gray-500 leading-relaxed pt-1">
+              A confirmation email with your QR code{freeSuccess.ticketNumbers.length > 1 ? "s has" : " has"} been sent to your inbox. Show the QR code at the entrance.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="border-t border-gray-100 px-6 py-4 space-y-2">
+            <Link
+              href="/buyer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white hover:bg-primary-500 transition-colors"
+            >
+              View my tickets
+            </Link>
+            <Link
+              href={`/events/${freeSuccess.eventSlug}`}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Back to event
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -143,6 +218,7 @@ function CheckoutContent() {
   const cartTotal = isCartCheckout
     ? cartItems.reduce((sum, item) => sum + item.preview.price * item.quantity, 0)
     : singleCategory!.price * singleQty;
+  const isFree = cartTotal === 0;
   const initialAmount =
     !isCartCheckout && singleCategory?.installmentPlan && useInstallments
       ? Math.round((cartTotal * singleCategory.installmentPlan.initialPaymentPercent) / 100)
@@ -210,11 +286,18 @@ function CheckoutContent() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            {[
-              { icon: "🔒", label: "Secure payment" },
-              { icon: "⚡", label: "Instant ticket" },
-              { icon: "✓", label: "Paystack verified" },
-            ].map((t) => (
+            {(isFree
+              ? [
+                  { icon: "🎟️", label: "Free entry" },
+                  { icon: "⚡", label: "Instant ticket" },
+                  { icon: "✓", label: "Secure & verified" },
+                ]
+              : [
+                  { icon: "🔒", label: "Secure payment" },
+                  { icon: "⚡", label: "Instant ticket" },
+                  { icon: "✓", label: "Paystack verified" },
+                ]
+            ).map((t) => (
               <span
                 key={t.label}
                 className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/70"
@@ -352,9 +435,9 @@ function CheckoutContent() {
 
               {/* Due now */}
               <div className="flex items-center justify-between rounded-xl bg-primary-50 px-4 py-3">
-                <span className="font-bold text-gray-900">Due now</span>
+                <span className="font-bold text-gray-900">{isFree ? "Total" : "Due now"}</span>
                 <span className="text-2xl font-black text-primary-600">
-                  KES {initialAmount.toLocaleString()}
+                  {isFree ? "Free" : `KES ${initialAmount.toLocaleString()}`}
                 </span>
               </div>
 
@@ -362,16 +445,29 @@ function CheckoutContent() {
                 <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
               )}
 
-              <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700 leading-relaxed">
-                <span className="font-bold">Refund policy:</span> Tickets are non-refundable once purchased. Installment deposits are non-refundable upon default or cancellation. Refunds are only issued if the event organiser cancels the event.{" "}
-                <a href="/terms" target="_blank" className="underline font-semibold">Full terms →</a>
-              </p>
+              {!isFree && (
+                <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700 leading-relaxed">
+                  <span className="font-bold">Refund policy:</span> Tickets are non-refundable once purchased. Installment deposits are non-refundable upon default or cancellation. Refunds are only issued if the event organiser cancels the event.{" "}
+                  <a href="/terms" target="_blank" className="underline font-semibold">Full terms →</a>
+                </p>
+              )}
 
               <Button className="w-full" size="lg" loading={paying} onClick={handlePay}>
-                <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                Pay with Paystack
+                {isFree ? (
+                  <>
+                    <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                    </svg>
+                    Get my free ticket
+                  </>
+                ) : (
+                  <>
+                    <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Pay with Paystack
+                  </>
+                )}
               </Button>
 
               <button

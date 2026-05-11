@@ -26,7 +26,7 @@ export default async function PublicEventPage({
   const session = await auth();
 
   const event = await db.event.findUnique({
-    where: { slug, status: "PUBLISHED" },
+    where: { slug },
     include: {
       seller: { select: { name: true } },
       ticketCategories: {
@@ -36,7 +36,9 @@ export default async function PublicEventPage({
     },
   });
 
+  // Public events must be published; private events are accessible by link regardless of status
   if (!event) notFound();
+  if (!event.isPrivate && event.status !== "PUBLISHED") notFound();
 
   const publicCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
 
@@ -229,13 +231,24 @@ export default async function PublicEventPage({
 
               {/* Ticket selection */}
               <div className="p-5">
+                {event.isPrivate && event.status !== "PUBLISHED" ? (
+                  <div className="py-4 text-center space-y-2">
+                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                      <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900">Registration not open yet</p>
+                    <p className="text-xs text-gray-500">The host hasn&apos;t opened tickets for this event. Check back soon.</p>
+                  </div>
+                ) : (
                 <PurchaseSection
                   event={{
                     id: event.id,
                     date: event.date.toISOString(),
                     endDate: event.endDate?.toISOString() ?? null,
                   }}
-                  categories={event.ticketCategories.map((c) => ({
+                  categories={publicCategories.map((c) => ({
                     id: c.id,
                     name: c.name,
                     description: c.description,
@@ -257,6 +270,7 @@ export default async function PublicEventPage({
                   }))}
                   isLoggedIn={!!session?.user}
                 />
+                )}
 
                 {/* Trust signals */}
                 <div className="mt-4 flex items-center justify-center gap-4 border-t border-gray-100 pt-4">

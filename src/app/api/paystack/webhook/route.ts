@@ -337,20 +337,24 @@ export async function POST(req: Request) {
   });
 
   // Cancel BullMQ reminder + revocation jobs for paid installments
-  if (paymentMode === "complete") {
-    const allIds = order.payments.filter((p) => p.paymentNumber > 0).map((p) => p.id);
-    if (allIds.length) await cancelInstallmentJobs(allIds);
-  } else if (paymentMode === "custom") {
-    // Reload to find which installments are now PAID
-    const freshPayments = await db.installmentPayment.findMany({
-      where: { orderId: order.id, paymentNumber: { gt: 0 }, status: "PAID" },
-      select: { id: true },
-    });
-    const prevPaidIds = new Set(order.payments.filter((p) => p.status === "PAID").map((p) => p.id));
-    const newlyPaidIds = freshPayments.filter((p) => !prevPaidIds.has(p.id)).map((p) => p.id);
-    if (newlyPaidIds.length) await cancelInstallmentJobs(newlyPaidIds);
-  } else if (isFollowOnPayment && transaction.installmentPaymentId) {
-    await cancelInstallmentJobs([transaction.installmentPaymentId]);
+  try {
+    if (paymentMode === "complete") {
+      const allIds = order.payments.filter((p) => p.paymentNumber > 0).map((p) => p.id);
+      if (allIds.length) await cancelInstallmentJobs(allIds);
+    } else if (paymentMode === "custom") {
+      // Reload to find which installments are now PAID
+      const freshPayments = await db.installmentPayment.findMany({
+        where: { orderId: order.id, paymentNumber: { gt: 0 }, status: "PAID" },
+        select: { id: true },
+      });
+      const prevPaidIds = new Set(order.payments.filter((p) => p.status === "PAID").map((p) => p.id));
+      const newlyPaidIds = freshPayments.filter((p) => !prevPaidIds.has(p.id)).map((p) => p.id);
+      if (newlyPaidIds.length) await cancelInstallmentJobs(newlyPaidIds);
+    } else if (isFollowOnPayment && transaction.installmentPaymentId) {
+      await cancelInstallmentJobs([transaction.installmentPaymentId]);
+    }
+  } catch (err) {
+    console.error("[webhook] cancelInstallmentJobs threw — continuing to email:", err);
   }
 
   // Reload order with fresh ticket
@@ -368,17 +372,43 @@ export async function POST(req: Request) {
     const venue = `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`;
 
     if (event_.experienceType === "GROUP_TRIP") {
-      await sendBookingConfirmation({
-        to: buyer.email,
-        name: buyer.name ?? "there",
-        eventTitle: event_.title,
-        categoryName: ticketCategory.name,
-        quantity: order.quantity,
-        totalAmount: Number(order.totalAmount),
-        paidAmount: Number(updatedOrder.paidAmount),
-        eventDate,
-        venue,
-      });
+      if (!isFollowOnPayment || isFullyPaid) {
+        // Initial deposit OR final payment completing the trip — "Booking confirmed"
+        // sendBookingConfirmation already adapts copy: "first payment received" vs "payment complete"
+        await sendBookingConfirmation({
+          to: buyer.email,
+          name: buyer.name ?? "there",
+          eventTitle: event_.title,
+          categoryName: ticketCategory.name,
+          quantity: order.quantity,
+          totalAmount: Number(order.totalAmount),
+          paidAmount: Number(updatedOrder.paidAmount),
+          eventDate,
+          venue,
+        });
+      } else {
+        // Follow-on GROUP_TRIP installment, not yet fully paid — "Payment received"
+        const remainingPayments = updatedOrder.payments
+          .filter((p) => p.paymentNumber > 0 && p.status === "PENDING")
+          .map((p) => ({
+            installmentNumber: p.paymentNumber,
+            amount: Number(p.amount) - Number(p.paidAmount),
+            dueDate: format(p.dueDate, "dd MMM yyyy"),
+          }));
+        await sendInstallmentReceipt({
+          to: buyer.email,
+          name: buyer.name ?? "there",
+          eventTitle: event_.title,
+          categoryName: ticketCategory.name,
+          eventDate,
+          venue,
+          amountPaid: amountNaira,
+          totalPaid: Number(updatedOrder.paidAmount),
+          totalAmount: Number(updatedOrder.totalAmount),
+          remainingPayments,
+          isDeposit: false,
+        });
+      }
     } else if (isFullyPaid) {
       await sendTicketConfirmation({
         to: buyer.email,
@@ -409,22 +439,28 @@ export async function POST(req: Request) {
         totalPaid: Number(updatedOrder.paidAmount),
         totalAmount: Number(updatedOrder.totalAmount),
         remainingPayments,
+        isDeposit: !isFollowOnPayment,
       });
     }
   } catch (err) {
-    console.error("[webhook] email threw:", err);
+    console.error("[webhook] email threw for order", order.id, "mode", paymentMode, ":", err);
   }
 
   // Schedule reminder + revocation jobs on initial payment only.
   // Follow-on payments: jobs were already scheduled at purchase; the paid one was cancelled above.
+  // Skip all scheduling when enforceRevocation is disabled (seller manages manually).
   if (!isFollowOnPayment && !isFullyPaid && plan) {
     const pendingPayments = updatedOrder.payments.filter(
       (p) => p.paymentNumber > 0 && p.status === "PENDING"
     );
     for (const payment of pendingPayments) {
-      await scheduleInstallmentReminder(payment.id, order.id, payment.dueDate);
-      await scheduleDefaultWarnings(payment.id, order.id, payment.dueDate, plan.gracePeriodDays);
-      await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays);
+      // Default warnings include the seller "defaulted" alert for all plans.
+      // Buyer-facing warnings and pre-revocation seller alert are gated inside on enforceRevocation.
+      await scheduleDefaultWarnings(payment.id, order.id, payment.dueDate, plan.gracePeriodDays, event_.date, plan.enforceRevocation);
+      if (plan.enforceRevocation) {
+        await scheduleInstallmentReminder(payment.id, order.id, payment.dueDate);
+        await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays, event_.date);
+      }
     }
   }
 

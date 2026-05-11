@@ -86,38 +86,37 @@ describe("publishEvent", () => {
     mocks.db.event.findFirst.mockResolvedValue(makeEvent({ ticketCategories: [] }));
     const result = await publishEvent("event1");
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/ticket category/i);
+    expect(!result.ok && result.error).toMatch(/ticket category/i);
   });
 
-  it("blocks publishing a FREE PUBLIC event when activation fee is unpaid", async () => {
+  it("allows publishing a FREE PUBLIC event", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(
-      makeEvent({ eventType: "FREE", experienceType: "PUBLIC", platformFeePaid: false })
-    );
-    const result = await publishEvent("event1");
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/activation fee/i);
-  });
-
-  it("allows publishing a FREE INVITE_ONLY event without paying the activation fee", async () => {
-    mocks.auth.mockResolvedValue(SELLER_SESSION);
-    mocks.db.event.findFirst.mockResolvedValue(
-      makeEvent({ eventType: "FREE", experienceType: "INVITE_ONLY", platformFeePaid: false })
+      makeEvent({ eventType: "FREE", experienceType: "PUBLIC" })
     );
     const result = await publishEvent("event1");
     expect(result).toEqual({ ok: true, data: { status: "PUBLISHED" } });
   });
 
-  it("allows publishing a FREE GROUP_TRIP event without paying the activation fee", async () => {
+  it("allows publishing a FREE INVITE_ONLY event", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(
-      makeEvent({ eventType: "FREE", experienceType: "GROUP_TRIP", platformFeePaid: false })
+      makeEvent({ eventType: "FREE", experienceType: "INVITE_ONLY" })
     );
     const result = await publishEvent("event1");
     expect(result).toEqual({ ok: true, data: { status: "PUBLISHED" } });
   });
 
-  it("publishes a PAID event without any fee checks", async () => {
+  it("allows publishing a FREE GROUP_TRIP event", async () => {
+    mocks.auth.mockResolvedValue(SELLER_SESSION);
+    mocks.db.event.findFirst.mockResolvedValue(
+      makeEvent({ eventType: "FREE", experienceType: "GROUP_TRIP" })
+    );
+    const result = await publishEvent("event1");
+    expect(result).toEqual({ ok: true, data: { status: "PUBLISHED" } });
+  });
+
+  it("publishes a PAID event", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(makeEvent({ eventType: "PAID" }));
     const result = await publishEvent("event1");

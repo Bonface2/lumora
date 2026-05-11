@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { CancelOrderButton } from "./CancelOrderButton";
+import { RevokeButton } from "@/components/RevokeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -147,7 +148,12 @@ export default async function AdminOrdersPage({
                     {new Date(o.createdAt).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <CancelOrderButton orderId={o.id} status={o.status} />
+                    <div className="flex items-center justify-end gap-2">
+                      {o.status !== "REVOKED" && o.status !== "CANCELLED" && (
+                        <RevokeButton orderId={o.id} buyerName={o.buyer.name ?? o.buyer.email} />
+                      )}
+                      <CancelOrderButton orderId={o.id} status={o.status} />
+                    </div>
                   </td>
                 </tr>
               ))}
