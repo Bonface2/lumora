@@ -476,6 +476,39 @@ export async function sellerRevokeOrder(
   return { ok: true, data: null };
 }
 
+export async function generatePrivateInviteLink(
+  eventId: string,
+  maxUses: number
+): Promise<ApiResponse<{ url: string; maxUses: number }>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+  if (maxUses < 1 || maxUses > 100) {
+    return { ok: false, error: "Number of invites must be between 1 and 100." };
+  }
+
+  const event = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+    select: { slug: true, isPrivate: true },
+  });
+
+  if (!event) return { ok: false, error: "Event not found." };
+  if (!event.isPrivate) return { ok: false, error: "Event is not private." };
+
+  const record = await db.privateEventToken.create({
+    data: { eventId, maxUses },
+  });
+
+  return {
+    ok: true,
+    data: {
+      url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug}?invite=${record.token}`,
+      maxUses,
+    },
+  };
+}
+
 export async function extendGracePeriod(
   orderId: string,
   extraDays: number

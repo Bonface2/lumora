@@ -230,6 +230,15 @@ export async function POST(req: Request) {
       console.error("[webhook] cart email threw:", err);
     }
 
+    // Consume one use of the invite token if present
+    const cartInviteToken = txMeta?.inviteToken as string | undefined;
+    if (cartInviteToken) {
+      await db.privateEventToken.updateMany({
+        where: { token: cartInviteToken },
+        data: { useCount: { increment: 1 } },
+      });
+    }
+
     return NextResponse.json({ received: true });
   }
 
@@ -461,6 +470,17 @@ export async function POST(req: Request) {
         await scheduleInstallmentReminder(payment.id, order.id, payment.dueDate);
         await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays, event_.date);
       }
+    }
+  }
+
+  // Consume one use of the invite token on the initial payment only
+  if (!isFollowOnPayment) {
+    const singleInviteToken = txMeta?.inviteToken as string | undefined;
+    if (singleInviteToken) {
+      await db.privateEventToken.updateMany({
+        where: { token: singleInviteToken },
+        data: { useCount: { increment: 1 } },
+      });
     }
   }
 

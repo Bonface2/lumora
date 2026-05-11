@@ -22,6 +22,7 @@ export async function createOrder(input: {
   ticketCategoryId: string;
   useInstallments: boolean;
   quantity?: number;
+  inviteToken?: string;
 }): Promise<ApiResponse<{ paymentUrl: string; ticketNumbers?: string[] }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in to continue." };
@@ -84,6 +85,7 @@ export async function createOrder(input: {
           paidAmount: 0,
           status: "PAID_IN_FULL",
           usesInstallments: false,
+          ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
         },
       });
       await tx.installmentPayment.create({
@@ -107,6 +109,13 @@ export async function createOrder(input: {
         data: { soldQuantity: { increment: quantity } },
       });
     });
+
+    if (input.inviteToken) {
+      await db.privateEventToken.updateMany({
+        where: { token: input.inviteToken },
+        data: { useCount: { increment: 1 } },
+      });
+    }
 
     await sendTicketConfirmation({
       to: buyer.email,
@@ -141,6 +150,7 @@ export async function createOrder(input: {
         paidAmount: 0,
         status: "PENDING",
         usesInstallments: !!plan,
+        ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
       },
     });
 
@@ -192,6 +202,7 @@ export async function createOrder(input: {
           ticketCategoryId: category.id,
           useInstallments: !!plan,
           paymentNumber: 0,
+          ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}),
         },
       },
     });
@@ -209,7 +220,7 @@ export async function createOrder(input: {
     amount: toKobo(amountDueNow),
     reference,
     callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderId: order.id, paymentNumber: 0 },
+    metadata: { orderId: order.id, paymentNumber: 0, ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}) },
   });
 
   if (!paystack.status) {
@@ -222,6 +233,7 @@ export async function createOrder(input: {
 
 export async function createCartOrder(input: {
   items: Array<{ ticketCategoryId: string; quantity: number }>;
+  inviteToken?: string;
 }): Promise<ApiResponse<{ paymentUrl: string; ticketNumbers?: string[] }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in to continue." };
@@ -291,6 +303,7 @@ export async function createCartOrder(input: {
             paidAmount: 0,
             status: "PAID_IN_FULL",
             usesInstallments: false,
+            ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
           },
         });
         await tx.installmentPayment.create({
@@ -340,6 +353,13 @@ export async function createCartOrder(input: {
       });
     }
 
+    if (input.inviteToken) {
+      await db.privateEventToken.updateMany({
+        where: { token: input.inviteToken },
+        data: { useCount: { increment: 1 } },
+      });
+    }
+
     const allTicketNumbers = result.flatMap((r) => r.ticketNumbers);
     return { ok: true, data: { paymentUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer`, ticketNumbers: allTicketNumbers } };
   }
@@ -359,6 +379,7 @@ export async function createCartOrder(input: {
           paidAmount: 0,
           status: "PENDING",
           usesInstallments: false,
+          ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
         },
       });
       ids.push(order.id);
@@ -380,7 +401,7 @@ export async function createCartOrder(input: {
         amount: grandTotal,
         reference,
         status: "pending",
-        metadata: { orderIds: ids, isCart: true, paymentNumber: 0 },
+        metadata: { orderIds: ids, isCart: true, paymentNumber: 0, ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}) },
       },
     });
 
@@ -397,7 +418,7 @@ export async function createCartOrder(input: {
     amount: toKobo(grandTotal),
     reference,
     callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderIds, isCart: true, paymentNumber: 0 },
+    metadata: { orderIds, isCart: true, paymentNumber: 0, ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}) },
   });
 
   if (!paystack.status) {

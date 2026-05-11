@@ -180,11 +180,16 @@ export default async function SellerEventsPage() {
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-                    {/* Status badge */}
-                    <div className="absolute left-3 bottom-3">
+                    {/* Status + privacy badges */}
+                    <div className="absolute left-3 bottom-3 flex items-center gap-1.5">
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${cfg.cls}`}>
                         {cfg.label}
                       </span>
+                      {event.isPrivate && (
+                        <span className="rounded-full bg-gray-900/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
+                          Private
+                        </span>
+                      )}
                     </div>
 
                     {/* Date badge */}

@@ -171,6 +171,7 @@ model Event {
   payoutMethod     PayoutMethod?    @relation(fields: [payoutMethodId], references: [id])
   ticketCategories TicketCategory[]
   invites          EventInvite[]
+  privateTokens    PrivateEventToken[]
 
   @@index([sellerId])
   @@index([status])
@@ -256,6 +257,7 @@ model Order {
   status           OrderStatus @default(PENDING)
   usesInstallments  Boolean     @default(false)
   graceExtensionDays Int       @default(0)
+  inviteSource     String?     // "LINK" | "EMAIL" | null
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -422,6 +424,22 @@ model TicketTransfer {
   @@index([orderId])
   @@index([token])
   @@map("ticket_transfers")
+}
+
+// ─── Private event invite tokens ─────────────────────────────────────────────
+
+model PrivateEventToken {
+  id        String   @id @default(cuid())
+  eventId   String
+  token     String   @unique @default(cuid())
+  maxUses   Int      @default(1)
+  useCount  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("private_event_tokens")
 }
 
 // ─── Password reset tokens ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { sendEventInvites } from "@/app/actions/invites";
@@ -114,7 +115,7 @@ export function InviteForm({ eventId, initialInvites }: Props) {
                   <td className="px-4 py-2.5 font-medium text-gray-900">{inv.email}</td>
                   <td className="px-4 py-2.5 text-gray-500">{inv.name ?? "—"}</td>
                   <td className="px-4 py-2.5 text-xs text-gray-400">
-                    {inv.sentAt ? new Date(inv.sentAt).toLocaleDateString() : "—"}
+                    {inv.sentAt ? format(new Date(inv.sentAt), "dd MMM yyyy") : "—"}
                   </td>
                 </tr>
               ))}

@@ -2,7 +2,8 @@
 
 import { useFieldArray, useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -53,6 +54,7 @@ function methodDisplay(m: PayoutMethodData) {
 export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutMethodLocked = false, eventType: eventTypeProp, experienceType: experienceTypeProp }: Props) {
   const isEdit = Boolean(eventId);
   const router = useRouter();
+  const todayMin = useMemo(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"), []);
   const [serverError, setServerError] = useState("");
   const [localMethods, setLocalMethods] = useState<PayoutMethodData[]>(payoutMethods);
   const [showPayoutForm, setShowPayoutForm] = useState(false);
@@ -167,6 +169,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                 <DateTimePicker
                   value={watch("date")}
                   onChange={(v) => setValue("date", v)}
+                  minDateTime={isEdit ? undefined : todayMin}
                   placeholder="Pick start date & time"
                   error={errors.date?.message}
                 />

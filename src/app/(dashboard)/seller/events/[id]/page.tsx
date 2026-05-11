@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { PublishButton } from "./PublishButton";
 import { CompTicketForm } from "@/components/CompTicketForm";
 import { InviteForm } from "@/components/InviteForm";
-import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { CopyInviteLinkButton } from "@/components/CopyInviteLinkButton";
 import { RevokeButton } from "@/components/RevokeButton";
 import { createScanToken } from "@/lib/scanToken";
 import type { EventStatus } from "@prisma/client";
@@ -67,6 +67,7 @@ export default async function SellerEventDetailPage({
   if (!event) notFound();
 
   const paidCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
+  const emailInviteSet = new Set(invites.map((inv: { email: string }) => inv.email.toLowerCase()));
   const totalSold = paidCategories.reduce((s, c) => s + c.soldQuantity, 0);
   const totalAvail = paidCategories.reduce((s, c) => s + c.totalQuantity, 0);
 
@@ -488,6 +489,7 @@ export default async function SellerEventDetailPage({
                     </th>
                     <th className="px-5 py-3 font-semibold text-gray-600">Paid</th>
                     <th className="px-5 py-3 font-semibold text-gray-600">Status</th>
+                    {event.isPrivate && <th className="px-5 py-3 font-semibold text-gray-600">Source</th>}
                     <th className="px-5 py-3" />
                   </tr>
                 </thead>
@@ -537,6 +539,21 @@ export default async function SellerEventDetailPage({
                             {statusLabel}
                           </span>
                         </td>
+                        {event.isPrivate && (
+                          <td className="px-5 py-4">
+                            {order.inviteSource === "LINK" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                                Link
+                              </span>
+                            ) : emailInviteSet.has(order.buyer.email.toLowerCase()) ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+                                Email invite
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-5 py-4 text-right">
                           {order.status !== "REVOKED" && order.status !== "CANCELLED" && (
                             <RevokeButton orderId={order.id} buyerName={order.buyer.name ?? order.buyer.email} />
@@ -558,11 +575,11 @@ export default async function SellerEventDetailPage({
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm space-y-6">
             {/* Shareable link */}
             <div>
-              <p className="mb-2 text-sm font-semibold text-gray-900">Shareable invite link</p>
+              <p className="mb-1 text-sm font-semibold text-gray-900">Invite link</p>
               <p className="mb-3 text-xs text-gray-500">
-                Copy this link and share it directly via WhatsApp, SMS, or any channel. Anyone with the link can view and register for this event.
+                Use this when you don&apos;t have someone&apos;s email. Each generated link is limited to the number of guests you specify — once that limit is reached the link expires and cannot be reused. Each time you click &quot;Generate&quot; a fresh link is created.
               </p>
-              <CopyLinkButton url={`${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug}`} />
+              <CopyInviteLinkButton eventId={id} />
             </div>
 
             {/* Email invites */}

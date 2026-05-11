@@ -31,9 +31,10 @@ interface Props {
   event: { id: string; date: string; endDate: string | null };
   categories: Category[];
   isLoggedIn: boolean;
+  inviteToken?: string;
 }
 
-export function PurchaseSection({ categories, isLoggedIn }: Props) {
+export function PurchaseSection({ categories, isLoggedIn, inviteToken }: Props) {
   const router = useRouter();
   const [cart, setCart] = useState<Map<string, number>>(new Map());
   const [useInstallments, setUseInstallments] = useState(false);
@@ -88,10 +89,13 @@ export function PurchaseSection({ categories, isLoggedIn }: Props) {
         installments: "1",
         qty: String(singleEntry[1]),
       });
+      if (inviteToken) params.set("invite", inviteToken);
       checkoutUrl = `${window.location.pathname}/checkout?${params}`;
     } else {
       const items = cartEntries.map(([id, qty]) => `${id}:${qty}`).join(",");
-      checkoutUrl = `${window.location.pathname}/checkout?items=${encodeURIComponent(items)}`;
+      const params = new URLSearchParams({ items });
+      if (inviteToken) params.set("invite", inviteToken);
+      checkoutUrl = `${window.location.pathname}/checkout?${params}`;
     }
 
     if (!isLoggedIn) {

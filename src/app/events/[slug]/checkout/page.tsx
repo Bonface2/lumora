@@ -43,6 +43,7 @@ function CheckoutContent() {
   const categoryId = searchParams.get("category") ?? "";
   const useInstallments = searchParams.get("installments") === "1";
   const singleQty = Math.max(1, parseInt(searchParams.get("qty") ?? "1", 10));
+  const inviteToken = searchParams.get("invite") ?? undefined;
 
   // Cart state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -113,7 +114,7 @@ function CheckoutContent() {
         return { ticketCategoryId: id.trim(), quantity: Math.max(1, parseInt(qStr ?? "1", 10)) };
       }).filter((i) => !!i.ticketCategoryId);
 
-      const res = await createCartOrder({ items: parsed });
+      const res = await createCartOrder({ items: parsed, inviteToken });
       if (!res.ok) { setError(res.error); setPaying(false); return; }
       if (res.data.ticketNumbers) {
         setFreeSuccess({ ticketNumbers: res.data.ticketNumbers, eventTitle: cartItems[0]?.preview.eventTitle ?? "", eventSlug: cartItems[0]?.preview.eventSlug ?? "" });
@@ -122,7 +123,7 @@ function CheckoutContent() {
       }
       window.location.href = res.data.paymentUrl;
     } else {
-      const res = await createOrder({ ticketCategoryId: categoryId, useInstallments, quantity: singleQty });
+      const res = await createOrder({ ticketCategoryId: categoryId, useInstallments, quantity: singleQty, inviteToken });
       if (!res.ok) { setError(res.error); setPaying(false); return; }
       if (res.data.ticketNumbers) {
         setFreeSuccess({ ticketNumbers: res.data.ticketNumbers, eventTitle: singleCategory?.eventTitle ?? "", eventSlug: singleCategory?.eventSlug ?? "" });
