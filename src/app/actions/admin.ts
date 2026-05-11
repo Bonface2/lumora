@@ -285,23 +285,6 @@ export async function adminUpdateUserRole(
   return { ok: true, data: null };
 }
 
-// ─── Order management ─────────────────────────────────────────────────────────
-
-export async function adminCancelOrder(orderId: string): Promise<ApiResponse<null>> {
-  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
-
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: { status: true },
-  });
-  if (!order) return { ok: false, error: "Order not found." };
-  if (order.status === "CANCELLED") return { ok: false, error: "Order already cancelled." };
-  if (order.status === "PAID_IN_FULL") return { ok: false, error: "Cannot cancel a fully paid order." };
-
-  await db.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });
-  return { ok: true, data: null };
-}
-
 // ─── Payout management ────────────────────────────────────────────────────────
 
 export async function triggerSellerPayout(
