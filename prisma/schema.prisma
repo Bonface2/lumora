@@ -218,9 +218,10 @@ model TicketCategory {
 model InstallmentPlan {
   id                    String   @id @default(cuid())
   ticketCategoryId      String   @unique
-  initialPaymentPercent Decimal  @db.Decimal(5, 2) // e.g. 30.00 = 30%
-  gracePeriodDays       Int      @default(7) // days past due before revocation
-  enforceRevocation     Boolean  @default(true) // false = seller handles revocation manually
+  initialPaymentPercent      Decimal  @db.Decimal(5, 2) // e.g. 30.00 = 30%
+  gracePeriodDays            Int      @default(7) // days past due before revocation
+  enforceRevocation          Boolean  @default(true) // false = seller handles revocation manually
+  graceOverridesEventCutoff  Boolean  @default(false) // true = grace period wins over 3-day-before-event rule
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

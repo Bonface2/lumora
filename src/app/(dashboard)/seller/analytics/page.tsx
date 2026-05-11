@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { AnalyticsCharts } from "./AnalyticsCharts";
+import { RevokedOrdersTable } from "./RevokedOrdersTable";
 import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
 
 function isOverdue(
@@ -188,6 +189,29 @@ export default async function AnalyticsPage({
           },
         });
   */
+
+  // Revoked orders scoped to this seller's events (filtered by event selection)
+  const revokedOrders = await db.order.findMany({
+    where: {
+      status: "REVOKED",
+      ticketCategory: {
+        event: {
+          sellerId: session!.user.id,
+          ...(selectedEventId ? { id: selectedEventId } : {}),
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      paidAmount: true,
+      totalAmount: true,
+      updatedAt: true,
+      buyer: { select: { name: true, email: true } },
+      ticketCategory: { select: { name: true, event: { select: { title: true } } } },
+      tickets: { select: { ticketNumber: true } },
+    },
+  });
 
   const exportBase = selectedEventId
     ? `/api/seller/export?event=${selectedEventId}&`
@@ -393,6 +417,44 @@ export default async function AnalyticsPage({
           )}
         </div>
       )}
+
+      {/* ── Revoked tickets ── */}
+      <div className="px-8 pb-12">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Revoked tickets</h2>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Tickets revoked due to missed payments or manual action.
+              You can reinstate a ticket if a dispute is resolved.
+            </p>
+          </div>
+          {revokedOrders.length > 0 && (
+            <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700">
+              {revokedOrders.length}
+            </span>
+          )}
+        </div>
+
+        {revokedOrders.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center">
+            <p className="text-sm font-semibold text-gray-500">No revoked tickets.</p>
+          </div>
+        ) : (
+          <RevokedOrdersTable
+            orders={revokedOrders.map((o) => ({
+              id: o.id,
+              buyerName: o.buyer.name,
+              buyerEmail: o.buyer.email,
+              eventTitle: o.ticketCategory.event.title,
+              categoryName: o.ticketCategory.name,
+              paidAmount: Number(o.paidAmount),
+              totalAmount: Number(o.totalAmount),
+              revokedAt: o.updatedAt,
+              tickets: o.tickets,
+            }))}
+          />
+        )}
+      </div>
     </div>
   );
 }

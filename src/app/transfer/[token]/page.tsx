@@ -77,6 +77,9 @@ export default async function TransferPage({
   const isInstallment = order.usesInstallments && order.status !== "PAID_IN_FULL";
   const paidAmount = Number(order.paidAmount);
   const totalAmount = Number(order.totalAmount);
+  const defaultedTotal = order.payments
+    .filter((p) => p.paymentNumber > 0 && p.status === "DEFAULTED")
+    .reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
@@ -121,30 +124,52 @@ export default async function TransferPage({
             </div>
 
             {/* Payment info */}
-            {isInstallment ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Payment schedule transfer</p>
-                <p className="text-sm text-amber-800">
-                  By accepting, you take over the remaining installments. Paid so far:{" "}
-                  <strong>KES {paidAmount.toLocaleString()}</strong> of{" "}
-                  <strong>KES {totalAmount.toLocaleString()}</strong>.
-                </p>
-                {(() => {
-                  const pending = order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING");
-                  if (!pending.length) return null;
-                  return (
-                    <div className="space-y-1 pt-1 border-t border-amber-200">
-                      {pending.map((p) => (
-                        <div key={p.id} className="flex justify-between text-xs text-amber-700">
-                          <span>Installment {p.paymentNumber} — due {format(p.dueDate, "dd MMM yyyy")}</span>
-                          <span className="font-bold">KES {(Number(p.amount) - Number(p.paidAmount)).toLocaleString()}</span>
-                        </div>
-                      ))}
+            {isInstallment ? (() => {
+              const defaulted = order.payments.filter((p) => p.paymentNumber > 0 && p.status === "DEFAULTED");
+              const pending   = order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING");
+              const defaultedTotal = defaulted.reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
+              return (
+                <div className="space-y-3">
+                  {defaulted.length > 0 && (
+                    <div className="rounded-xl border border-red-300 bg-red-50 p-4 space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-wider text-red-700">Immediate payment required</p>
+                      <p className="text-sm text-red-800">
+                        This schedule has overdue instalments totalling{" "}
+                        <strong>KES {defaultedTotal.toLocaleString()}</strong>. You must pay this
+                        amount immediately when you accept — you will be taken to a payment page before
+                        ownership is transferred.
+                      </p>
+                      <div className="space-y-1 pt-1 border-t border-red-200">
+                        {defaulted.map((p) => (
+                          <div key={p.id} className="flex justify-between text-xs text-red-700">
+                            <span>Instalment {p.paymentNumber} — overdue</span>
+                            <span className="font-bold">KES {(Number(p.amount) - Number(p.paidAmount)).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  );
-                })()}
-              </div>
-            ) : (
+                  )}
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Payment schedule transfer</p>
+                    <p className="text-sm text-amber-800">
+                      Paid so far: <strong>KES {paidAmount.toLocaleString()}</strong> of{" "}
+                      <strong>KES {totalAmount.toLocaleString()}</strong>.
+                    </p>
+                    {pending.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-amber-200">
+                        <p className="text-xs font-semibold text-amber-700">Upcoming instalments</p>
+                        {pending.map((p) => (
+                          <div key={p.id} className="flex justify-between text-xs text-amber-700">
+                            <span>Instalment {p.paymentNumber} — due {format(p.dueDate, "dd MMM yyyy")}</span>
+                            <span className="font-bold">KES {(Number(p.amount) - Number(p.paidAmount)).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })() : (
               <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
                 <p className="text-sm text-green-800">
                   <strong>Fully paid ticket</strong> — no further payments required.
@@ -156,7 +181,7 @@ export default async function TransferPage({
               Offer expires {format(transfer.expiresAt, "dd MMMM yyyy")}
             </p>
 
-            <TransferActions token={token} />
+            <TransferActions token={token} defaultedTotal={defaultedTotal} />
           </div>
         </div>
       </div>

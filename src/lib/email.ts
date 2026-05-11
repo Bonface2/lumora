@@ -632,6 +632,18 @@ export async function sendDefaultWarning({
       </tr>
     </table>
 
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:0 0 24px;">
+      <tr>
+        <td style="font-size:13px;color:#1e40af;line-height:1.5;">
+          <strong>💡 Can't pay right now?</strong> You can transfer your ticket to someone else before
+          it is revoked. Log in to your Lumora account and use the <strong>Transfer ticket</strong>
+          option on your order to pass ownership — and the remaining payment schedule — to another person.
+        </td>
+      </tr>
+    </table>
+
     ${ctaButton("Pay Now to Keep Your Ticket", paymentUrl)}
   `;
 
@@ -734,6 +746,20 @@ export async function sendTicketRevocationNotice({
         </td>
       </tr>
     </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#f8fafc;border-left:4px solid #94a3b8;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:0 0 24px;">
+      <tr>
+        <td style="font-size:13px;color:#475569;line-height:1.5;">
+          <strong>💡 Tip for next time:</strong> If you are unable to keep up with payments, you can
+          transfer your ticket to someone else <em>before</em> it is revoked. Use the
+          <strong>Transfer ticket</strong> option in your Lumora account to pass ownership and the
+          remaining payment schedule to another person — transferred tickets cannot be reinstated
+          after revocation.
+        </td>
+      </tr>
+    </table>
   `;
 
   return send({
@@ -745,6 +771,56 @@ export async function sendTicketRevocationNotice({
       headline: "Ticket revoked",
       label: "Notice",
       accentColor: "#dc2626",
+      body,
+      footerNote: "This is an automated notice from Lumora.",
+    }),
+  });
+}
+
+export async function sendTicketReinstatementNotice({
+  to,
+  name,
+  eventTitle,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+}) {
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Good news, ${name}!
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      Your ticket for <strong style="color:#0f172a;">${eventTitle}</strong> has been reinstated.
+      Your access is fully restored and your ticket is valid again.
+    </p>
+
+    ${infoCard([
+      { label: "Event",  value: eventTitle },
+      { label: "Status", value: "Reinstated — ticket is valid" },
+    ])}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#166534;line-height:1.5;">
+          If you had outstanding installments, they have been restored to overdue status.
+          Please log in and complete any remaining payments to avoid future revocation.
+        </td>
+      </tr>
+    </table>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your ticket for ${eventTitle} has been reinstated`,
+    html: shell({
+      preheader: `Great news — your ticket for ${eventTitle} is valid again.`,
+      headline: "Ticket reinstated",
+      label: "Good news",
+      accentColor: "#16a34a",
       body,
       footerNote: "This is an automated notice from Lumora.",
     }),
@@ -840,6 +916,8 @@ export async function sendTransferInvite({
   acceptUrl,
   expiresAt,
   isInstallment,
+  hasDefaultedPayments = false,
+  defaultedAmount,
 }: {
   to: string;
   name: string;
@@ -851,8 +929,25 @@ export async function sendTransferInvite({
   acceptUrl: string;
   expiresAt: string;
   isInstallment: boolean;
+  hasDefaultedPayments?: boolean;
+  defaultedAmount?: string;
 }) {
   const transferType = isInstallment ? "payment schedule (installment plan)" : "fully paid ticket";
+
+  const defaultedWarning = hasDefaultedPayments && defaultedAmount ? `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#9a3412;line-height:1.5;">
+          <strong>⚠️ Immediate payment required:</strong> This payment schedule has
+          <strong>${defaultedAmount}</strong> in overdue instalments. When you accept this transfer
+          you will be taken to pay this amount immediately before taking ownership. Subsequent
+          instalments will then continue on the original schedule.
+        </td>
+      </tr>
+    </table>
+  ` : "";
 
   const body = `
     <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
@@ -869,8 +964,10 @@ export async function sendTransferInvite({
       { label: "Venue",       value: venue },
     ])}
 
+    ${defaultedWarning}
+
     <div style="margin-top:28px;">
-      ${ctaButton("Review &amp; Accept Transfer", acceptUrl)}
+      ${ctaButton(hasDefaultedPayments ? "Review &amp; Accept Transfer" : "Review &amp; Accept Transfer", acceptUrl)}
     </div>
 
     <p style="margin:20px 0 0;font-size:13px;color:#64748b;line-height:1.5;">

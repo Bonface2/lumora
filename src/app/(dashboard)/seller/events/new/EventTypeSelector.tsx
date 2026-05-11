@@ -52,7 +52,7 @@ export function EventTypeSelector({ onSelect }: Props) {
         </p>
         <div className="mt-auto flex items-center gap-2">
           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-            KES 1,000 activation fee
+            Activation fee from KES 1,000
           </span>
         </div>
         <div className="mt-4 flex items-center gap-1.5 font-semibold text-primary-600 group-hover:text-primary-700">

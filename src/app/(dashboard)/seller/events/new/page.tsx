@@ -31,7 +31,7 @@ export default async function NewEventPage() {
         totalQuantity: 0,
         allowInstallments: false,
         sortOrder: 0,
-        installmentPlan: { initialPaymentPercent: 30, gracePeriodDays: 7, enforceRevocation: true, scheduleItems: [] },
+        installmentPlan: { initialPaymentPercent: 30, gracePeriodDays: 7, enforceRevocation: true, graceOverridesEventCutoff: false, scheduleItems: [] },
       },
     ],
   };

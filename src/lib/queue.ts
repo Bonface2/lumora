@@ -134,14 +134,16 @@ export async function scheduleInstallmentReminder(
 }
 
 // Schedules a daily default warning from day 1 after due date until revocation.
-// Revocation fires at the earlier of: dueDate + gracePeriodDays, or eventDate − 3 days.
+// Revocation fires at: dueDate + gracePeriodDays, unless the event cutoff (eventDate − 3 days)
+// is earlier AND the due date itself is before the cutoff AND graceOverridesEventCutoff is false.
 export async function scheduleDefaultWarnings(
   installmentPaymentId: string,
   orderId: string,
   dueDate: Date,
   gracePeriodDays: number,
   eventDate?: Date,
-  enforceRevocation = true
+  enforceRevocation = true,
+  graceOverridesEventCutoff = false
 ) {
   const now = Date.now();
   const sellerQueue = getSellerAlertQueue();
@@ -170,8 +172,15 @@ export async function scheduleDefaultWarnings(
     ? new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000)
     : null;
 
-  const revocationDate =
-    eventCutoff && eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
+  // Skip the event cutoff when:
+  // 1. The due date itself falls within 3 days of the event (revocation before payment is even due)
+  // 2. The seller explicitly opted for grace period to take precedence
+  const skipEventCutoff =
+    !eventCutoff || dueDate >= eventCutoff || graceOverridesEventCutoff;
+
+  const revocationDate = skipEventCutoff
+    ? graceExpiry
+    : eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
 
   let dayAfterDue = 1;
   while (true) {
@@ -211,17 +220,22 @@ export async function scheduleTicketRevocation(
   installmentPaymentId: string,
   dueDate: Date,
   gracePeriodDays: number,
-  eventDate?: Date
+  eventDate?: Date,
+  graceOverridesEventCutoff = false
 ) {
   const graceExpiry = new Date(dueDate);
   graceExpiry.setDate(graceExpiry.getDate() + gracePeriodDays);
 
-  // Also revoke 3 days before the event so organisers have a clean list
   const eventCutoff = eventDate ? new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000) : null;
 
-  // Fire at the earlier of the two deadlines
-  const revocationDate =
-    eventCutoff && eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
+  // Skip the event cutoff when the due date is already within the 3-day window,
+  // or the seller opted for grace period to take precedence.
+  const skipEventCutoff =
+    !eventCutoff || dueDate >= eventCutoff || graceOverridesEventCutoff;
+
+  const revocationDate = skipEventCutoff
+    ? graceExpiry
+    : eventCutoff < graceExpiry ? eventCutoff : graceExpiry;
 
   const delay = revocationDate.getTime() - Date.now();
   if (delay <= 0) return;

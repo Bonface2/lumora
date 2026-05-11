@@ -3,6 +3,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format, addDays } from "date-fns";
+import { initializePayment, toKobo, generateReference } from "@/lib/paystack";
 import type { ApiResponse } from "@/types";
 
 const TRANSFER_EXPIRY_DAYS = 1;
@@ -66,6 +67,11 @@ export async function initiateTransfer(
   const { sendTransferInvite } = await import("@/lib/email");
   const event_ = order.ticketCategory.event;
 
+  const defaultedPayments = order.payments.filter((p) => p.status === "DEFAULTED");
+  const defaultedTotal = defaultedPayments.reduce(
+    (sum, p) => sum + (Number(p.amount) - Number(p.paidAmount)), 0,
+  );
+
   try {
     await sendTransferInvite({
       to: normalizedEmail,
@@ -78,6 +84,8 @@ export async function initiateTransfer(
       acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/transfer/${transfer.token}`,
       expiresAt: format(expiresAt, "dd MMMM yyyy"),
       isInstallment: order.usesInstallments && order.status !== "PAID_IN_FULL",
+      hasDefaultedPayments: defaultedPayments.length > 0,
+      defaultedAmount: defaultedTotal > 0 ? `KES ${defaultedTotal.toLocaleString()}` : undefined,
     });
   } catch (err) {
     console.error("[transfer] invite email threw:", err);
@@ -124,7 +132,7 @@ export async function getTransferByToken(token: string) {
 export async function respondToTransfer(
   token: string,
   action: "accept" | "decline"
-): Promise<ApiResponse<null>> {
+): Promise<ApiResponse<{ paystackUrl?: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in." };
 
@@ -167,7 +175,43 @@ export async function respondToTransfer(
       console.error("[transfer] decline notification threw:", err);
     }
 
-    return { ok: true, data: null };
+    return { ok: true, data: {} };
+  }
+
+  // If there are defaulted payments the recipient must pay them before taking ownership
+  const defaultedPayments = transfer.order.payments.filter((p) => p.status === "DEFAULTED");
+  if (defaultedPayments.length > 0) {
+    const defaultedTotal = defaultedPayments.reduce(
+      (sum, p) => sum + (Number(p.amount) - Number(p.paidAmount)), 0,
+    );
+    const reference = generateReference("TDF");
+    await db.paystackTransaction.create({
+      data: {
+        orderId: transfer.orderId,
+        amount: defaultedTotal,
+        reference,
+        status: "pending",
+        metadata: {
+          type: "transfer_default_payment",
+          transferToken: token,
+          toUserId: session.user!.id,
+          orderId: transfer.orderId,
+        },
+      },
+    });
+    const init = await initializePayment({
+      email: session.user!.email!,
+      amount: toKobo(defaultedTotal),
+      reference,
+      metadata: {
+        type: "transfer_default_payment",
+        transferToken: token,
+        toUserId: session.user!.id,
+        orderId: transfer.orderId,
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/buyer?transferred=1`,
+    });
+    return { ok: true, data: { paystackUrl: init.data.authorization_url } };
   }
 
   // Accept — transfer ownership in a transaction
@@ -218,7 +262,7 @@ export async function respondToTransfer(
     console.error("[transfer] accept notification threw:", err);
   }
 
-  return { ok: true, data: null };
+  return { ok: true, data: {} };
 }
 
 export async function getPendingTransferForOrder(orderId: string) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState, useEffect } from "react";
 import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -44,6 +45,68 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
     control,
     name: `ticketCategories.${index}.installmentPlan.enforceRevocation`,
   });
+
+  const gracePeriodDays = useWatch({
+    control,
+    name: `ticketCategories.${index}.installmentPlan.gracePeriodDays`,
+  });
+
+  const graceOverridesEventCutoff = useWatch({
+    control,
+    name: `ticketCategories.${index}.installmentPlan.graceOverridesEventCutoff`,
+  });
+
+  // Max allowed grace = whole days from the latest due date to event start time (hard cap)
+  const maxGraceDays = useMemo(() => {
+    if (!eventDateStr || !scheduleItems?.length) return undefined;
+    const eventDate = new Date(eventDateStr); // preserves event start time
+    let min = Infinity;
+    for (const item of scheduleItems as { dueDate?: string }[]) {
+      if (!item?.dueDate) continue;
+      const due = new Date(item.dueDate);
+      const diff = Math.floor((eventDate.getTime() - due.getTime()) / (24 * 60 * 60 * 1000));
+      if (diff < min) min = diff;
+    }
+    return min === Infinity ? undefined : Math.max(1, min);
+  }, [eventDateStr, scheduleItems]);
+
+  // Auto-cap grace period to maxGraceDays and notify when it would exceed the hard cap
+  const [cappedNotice, setCappedNotice] = useState(false);
+  useEffect(() => {
+    if (maxGraceDays !== undefined && Number(gracePeriodDays) > maxGraceDays) {
+      setValue(
+        `ticketCategories.${index}.installmentPlan.gracePeriodDays`,
+        maxGraceDays,
+        { shouldValidate: true },
+      );
+      setCappedNotice(true);
+    } else {
+      setCappedNotice(false);
+    }
+  }, [gracePeriodDays, maxGraceDays]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Info when any due date falls within t-3 (t-3 rule is auto-bypassed for those instalments)
+  const hasDueWithinCutoff = useMemo(() => {
+    if (!enforceRevocation || !eventDateStr || !scheduleItems?.length) return false;
+    const cutoff = new Date(new Date(eventDateStr).getTime() - 3 * 24 * 60 * 60 * 1000);
+    return (scheduleItems as { dueDate?: string }[]).some(
+      (item) => item?.dueDate && new Date(item.dueDate) >= cutoff,
+    );
+  }, [enforceRevocation, eventDateStr, scheduleItems]);
+
+  // Warn when any due date + grace period extends past eventDate − 3 days
+  const graceExceedsCutoff = useMemo(() => {
+    if (!enforceRevocation || !eventDateStr || !gracePeriodDays || !scheduleItems?.length) return false;
+    const eventDate = new Date(eventDateStr);
+    const cutoff = new Date(eventDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+    return scheduleItems.some((item: { dueDate?: string }) => {
+      if (!item?.dueDate) return false;
+      const due = new Date(item.dueDate);
+      const graceEnd = new Date(due);
+      graceEnd.setDate(graceEnd.getDate() + Number(gracePeriodDays));
+      return due < cutoff && graceEnd > cutoff;
+    });
+  }, [enforceRevocation, eventDateStr, gracePeriodDays, scheduleItems]);
 
 
   const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } =
@@ -154,36 +217,19 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
           <div className="rounded-lg border border-primary-200 bg-primary-50 p-4 space-y-4">
             <p className="text-sm font-medium text-primary-800">Installment plan</p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label required>Initial payment (%)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={99}
-                  placeholder="30"
-                  error={planErrors?.initialPaymentPercent?.message}
-                  {...register(
-                    `ticketCategories.${index}.installmentPlan.initialPaymentPercent`,
-                    { valueAsNumber: true }
-                  )}
-                />
-              </div>
-              <div className={!enforceRevocation ? "opacity-40 pointer-events-none" : ""}>
-                <Label>Grace period (days)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  placeholder="7"
-                  {...register(
-                    `ticketCategories.${index}.installmentPlan.gracePeriodDays`,
-                    { valueAsNumber: true }
-                  )}
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Days after due before ticket is auto-revoked
-                </p>
-              </div>
+            <div className="max-w-xs">
+              <Label required>Initial payment (%)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={99}
+                placeholder="30"
+                error={planErrors?.initialPaymentPercent?.message}
+                {...register(
+                  `ticketCategories.${index}.installmentPlan.initialPaymentPercent`,
+                  { valueAsNumber: true }
+                )}
+              />
             </div>
 
             {/* Enforce revocation toggle — all paid events */}
@@ -200,7 +246,7 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
                 <p className="text-sm font-medium text-primary-800">Auto-revoke on missed payment</p>
                 <p className="text-xs text-gray-500">
                   {enforceRevocation
-                    ? "Tickets are automatically revoked after the grace period or 3 days before the event."
+                    ? "Tickets are automatically revoked after the grace period. By default, revocation also fires 3 days before the event."
                     : "Disabled — you will manage revocations manually from your event dashboard."}
                 </p>
                 <a
@@ -346,6 +392,94 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false }: P
                 </p>
               )}
             </div>
+
+            {/* Grace period — sits below the schedule so the max is already visible */}
+            {enforceRevocation && (
+              <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Grace period</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    The number of days after a missed due date before the ticket is automatically revoked.
+                    Buyers receive a daily reminder email throughout this window.
+                    Grace period must end before the event starts.
+                  </p>
+                </div>
+                <div className="max-w-xs">
+                  <Label>Days</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={maxGraceDays}
+                    placeholder="7"
+                    error={(planErrors?.gracePeriodDays as { message?: string } | undefined)?.message}
+                    {...register(
+                      `ticketCategories.${index}.installmentPlan.gracePeriodDays`,
+                      { valueAsNumber: true }
+                    )}
+                  />
+                  {maxGraceDays !== undefined && (
+                    <p className="mt-1 text-xs font-medium text-amber-600">
+                      Max {maxGraceDays} day{maxGraceDays !== 1 ? "s" : ""} — your latest instalment is due {maxGraceDays} day{maxGraceDays !== 1 ? "s" : ""} before the event
+                    </p>
+                  )}
+                  {cappedNotice && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-blue-600">
+                      <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
+                      </svg>
+                      Auto-set to {maxGraceDays} day{maxGraceDays !== 1 ? "s" : ""} — the maximum before grace would extend past the event.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Info: one or more due dates are within t-3 — 3-day rule is auto-bypassed */}
+            {hasDueWithinCutoff && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-blue-800">Due date is within 3 days of the event</p>
+                  <p className="mt-0.5 text-xs text-blue-700">
+                    One or more instalments are due within 3 days of your event. The 3-day-before-event auto-revocation rule is automatically bypassed for those instalments — only the grace period timeline applies.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Warning: grace period extends past the 3-day event cutoff */}
+            {graceExceedsCutoff && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 space-y-3">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-amber-500">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Grace period extends past 3 days before your event</p>
+                    <p className="mt-0.5 text-xs text-amber-700">
+                      With your current due date and grace period, some buyers may still be within their grace window when the
+                      3-day-before-event rule would normally trigger auto-revocation. By default, the earlier deadline wins.
+                      You can override this so the full grace period always applies.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                    {...register(`ticketCategories.${index}.installmentPlan.graceOverridesEventCutoff`)}
+                  />
+                  <span className="text-xs font-medium text-amber-800">
+                    I understand — let the grace period run its full course, even if it extends past 3 days before the event.
+                    Tickets will only be auto-revoked after the grace period expires.
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
           )}
           </>

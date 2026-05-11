@@ -123,11 +123,38 @@ export default function TermsPage() {
               A ticket will be automatically revoked at whichever of the following occurs <strong className="text-gray-800">first</strong>:
               <ul className="mt-1.5 ml-4 space-y-1">
                 <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" /><span>The Seller's grace period (set per ticket category) expires after the missed due date; <strong className="text-gray-800">or</strong></span></li>
-                <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" /><span><strong className="text-gray-800">3 days before the event</strong>, regardless of the grace period remaining.</span></li>
+                <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gray-400" /><span><strong className="text-gray-800">3 days before the event</strong>, unless an override applies (see below).</span></li>
               </ul>
             </Bullet>
             <Bullet><strong className="text-gray-800">All payments already made under an Installment Plan are non-refundable upon cancellation due to default.</strong></Bullet>
             <Bullet>Lumora is not liable for failed or delayed payment reminders caused by incorrect email addresses or spam filters.</Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">Grace period hard cap</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              A grace period <strong className="text-gray-800">cannot extend beyond the event date itself</strong>. When configuring a ticket category, the Platform will reject any grace period that would expire after the event. The maximum permitted grace period is determined by the gap between the final instalment due date and the event date.
+            </Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">Why the 3-day cutoff exists</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              The 3-day-before-event cutoff is designed to give the Platform enough time to make the
+              freed slot available for purchase by another attendee. Lumora recommends that Sellers
+              adopt this default behaviour wherever possible so that revoked tickets can be resold
+              before the event.
+            </Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">3-days-before-event rule and overrides</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              <strong className="text-gray-800">Automatic bypass.</strong> If a Buyer&apos;s instalment due date falls within 3 days of the event (or on the event day itself), the 3-day cutoff rule is automatically waived for that instalment. Revocation will then be triggered solely by the grace period expiry, not by the 3-day cutoff.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Seller opt-in override.</strong> If the grace period for a ticket category would extend past the 3-days-before-event threshold, the Platform alerts the Seller during setup. The Seller may choose to override the 3-day rule, in which case revocation will follow the full grace period timeline rather than the 3-day cutoff. This override applies to all Buyers in that ticket category.
+            </Bullet>
+            <Bullet>
+              Where no override has been elected, the 3-day cutoff remains in effect and tickets with outstanding payments will be revoked at that point even if the grace period has not yet fully elapsed.
+            </Bullet>
           </ul>
           <p className="mt-3 font-semibold text-gray-800">Grace period extensions</p>
           <ul className="mt-1 space-y-2">
@@ -138,7 +165,7 @@ export default function TermsPage() {
               An extension only affects that specific Buyer&apos;s order. It does not alter the default grace period configured for the ticket category or for any other Buyer.
             </Bullet>
             <Bullet>
-              Extensions reschedule the automatic revocation deadline. The revised deadline is calculated as: <strong className="text-gray-800">original due date + plan grace period + total extension days</strong>, subject still to the hard 3-days-before-event cutoff.
+              Extensions reschedule the automatic revocation deadline. The revised deadline is calculated as: <strong className="text-gray-800">original due date + plan grace period + total extension days</strong>, subject to the hard event-date cap and, where no override is active, the 3-days-before-event cutoff.
             </Bullet>
           </ul>
           <p className="mt-3 font-semibold text-gray-800">Manual revocation mode</p>
@@ -151,6 +178,21 @@ export default function TermsPage() {
             </Bullet>
             <Bullet>
               Lumora bears no liability for Sellers failing to act on missed payments in manual revocation mode.
+            </Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">Ticket reinstatement</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              A revoked ticket may be <strong className="text-gray-800">reinstated</strong> by the event organiser or by a Lumora administrator — for example, following successful dispute resolution or a payment arrangement reached outside the Platform.
+            </Bullet>
+            <Bullet>
+              Reinstatement restores the ticket to <strong className="text-gray-800">Active</strong> status. Where the order was settled in full at the time of revocation, its status is restored to Paid in Full; where instalments were still outstanding, the order reverts to Partially Paid and any previously defaulted instalment payments are restored to Overdue status, meaning they remain due.
+            </Bullet>
+            <Bullet>
+              The Buyer will receive an email notification when their ticket is reinstated. It is the Buyer&apos;s responsibility to ensure they meet any outstanding payment obligations following reinstatement.
+            </Bullet>
+            <Bullet>
+              Reinstatement is at the sole discretion of the event organiser or Lumora. Neither party is obligated to reinstate a revoked ticket.
             </Bullet>
           </ul>
         </Section>
@@ -176,6 +218,9 @@ export default function TermsPage() {
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">Installment responsibility.</strong> The recipient who accepts a transfer of a payment schedule assumes full liability for all outstanding installments from the date of transfer. Missed payments after transfer are subject to the same grace period and revocation rules as set out in Section 05.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Defaulted instalments on transfer.</strong> If any instalment payments on the order are in <em>defaulted</em> status at the time of transfer, the recipient must pay the full outstanding defaulted amount immediately upon accepting the transfer. The Platform will present a payment screen before completing the ownership change. The recipient will be clearly informed of the amount due before accepting. Subsequent instalments on the original schedule continue normally after the defaulted amount is cleared.
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">One pending transfer at a time.</strong> Only one transfer invitation may be active per order at any given time. The sender may cancel a pending invitation before it is accepted.

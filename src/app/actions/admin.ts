@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { initiateTransfer, toKobo, generateReference } from "@/lib/paystack";
 import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
+import { sendTicketReinstatementNotice } from "@/lib/email";
 import type { ApiResponse } from "@/types";
 
 async function requireAdmin() {
@@ -300,6 +301,54 @@ export async function adminDeleteUser(userId: string): Promise<ApiResponse<null>
   if (user._count.events > 0) return { ok: false, error: "Cannot delete a user who has created events." };
 
   await db.user.delete({ where: { id: userId } });
+  return { ok: true, data: null };
+}
+
+export async function reinstateOrder(orderId: string): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      status: true,
+      paidAmount: true,
+      totalAmount: true,
+      quantity: true,
+      ticketCategoryId: true,
+      buyer: { select: { email: true, name: true } },
+      ticketCategory: { select: { event: { select: { title: true } } } },
+    },
+  });
+  if (!order) return { ok: false, error: "Order not found." };
+  if (order.status !== "REVOKED") return { ok: false, error: "Order is not revoked." };
+
+  const isFullyPaid = Number(order.paidAmount) >= Number(order.totalAmount);
+  await db.$transaction([
+    db.ticket.updateMany({ where: { orderId }, data: { status: "ACTIVE" } }),
+    db.installmentPayment.updateMany({
+      where: { orderId, status: "DEFAULTED" },
+      data: { status: "OVERDUE" },
+    }),
+    db.order.update({
+      where: { id: orderId },
+      data: { status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" },
+    }),
+    db.ticketCategory.update({
+      where: { id: order.ticketCategoryId },
+      data: { soldQuantity: { increment: order.quantity } },
+    }),
+  ]);
+
+  try {
+    await sendTicketReinstatementNotice({
+      to: order.buyer.email,
+      name: order.buyer.name ?? "there",
+      eventTitle: order.ticketCategory.event.title,
+    });
+  } catch (err) {
+    console.error("[reinstateOrder] reinstatement email failed:", err);
+  }
+
   return { ok: true, data: null };
 }
 

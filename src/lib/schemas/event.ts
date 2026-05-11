@@ -10,6 +10,7 @@ export const installmentPlanSchema = z.object({
   initialPaymentPercent: z.number().min(1, "Required").max(99),
   gracePeriodDays: z.number().min(1),
   enforceRevocation: z.boolean(),
+  graceOverridesEventCutoff: z.boolean(),
   scheduleItems: z.array(installmentItemSchema),
 });
 
@@ -70,6 +71,7 @@ function installmentDateRefinement(
       return;
     }
     let prevDueDate = "";
+    let latestDueDate = "";
     cat.installmentPlan.scheduleItems.forEach((item, itemIdx) => {
       if (!item.dueDate) return;
       const path = [
@@ -88,7 +90,22 @@ function installmentDateRefinement(
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Due date must be after the previous installment", path });
       }
       prevDueDate = item.dueDate;
+      if (item.dueDate > latestDueDate) latestDueDate = item.dueDate;
     });
+
+    // Grace period must not push past the event date
+    if (cat.installmentPlan.enforceRevocation && latestDueDate && cat.installmentPlan.gracePeriodDays) {
+      const eventDate = new Date(data.date);
+      const dueDate = new Date(latestDueDate);
+      const maxGrace = Math.floor((eventDate.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000));
+      if (cat.installmentPlan.gracePeriodDays > maxGrace) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Grace period cannot extend past the event date. Maximum ${maxGrace} day(s) based on your latest due date.`,
+          path: ["ticketCategories", catIdx, "installmentPlan", "gracePeriodDays"],
+        });
+      }
+    }
   });
 }
 

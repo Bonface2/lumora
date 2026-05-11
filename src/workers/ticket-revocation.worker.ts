@@ -40,6 +40,11 @@ const worker = new Worker<TicketRevocationJob>(
         where: { id: orderId },
         data: { status: "REVOKED" },
       }),
+      // Restore the slot so the ticket can be resold
+      db.ticketCategory.update({
+        where: { id: order.ticketCategoryId },
+        data: { soldQuantity: { decrement: order.quantity } },
+      }),
     ]);
 
     await sendTicketRevocationNotice({

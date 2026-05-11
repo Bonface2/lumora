@@ -37,6 +37,7 @@ const BLANK_CATEGORY: CreateEventFormData["ticketCategories"][number] = {
     initialPaymentPercent: 30,
     gracePeriodDays: 7,
     enforceRevocation: false,
+    graceOverridesEventCutoff: false,
     scheduleItems: [],
   },
 };
@@ -386,6 +387,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                     initialPaymentPercent: 30,
                     gracePeriodDays: 7,
                     enforceRevocation: resolvedExperienceType === "PUBLIC",
+                    graceOverridesEventCutoff: false,
                     scheduleItems: [],
                   },
                 })

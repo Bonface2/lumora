@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { respondToTransfer } from "@/app/actions/transfer";
 
-export function TransferActions({ token }: { token: string }) {
+export function TransferActions({ token, defaultedTotal }: { token: string; defaultedTotal: number }) {
   const router = useRouter();
   const [loading, setLoading] = useState<"accept" | "decline" | null>(null);
   const [error, setError] = useState("");
@@ -19,11 +19,19 @@ export function TransferActions({ token }: { token: string }) {
       return;
     }
     if (action === "accept") {
-      router.push("/buyer?transferred=1");
+      if (res.data?.paystackUrl) {
+        window.location.href = res.data.paystackUrl;
+      } else {
+        router.push("/buyer?transferred=1");
+      }
     } else {
       router.push("/?declined=1");
     }
   }
+
+  const acceptLabel = defaultedTotal > 0
+    ? `Accept & Pay KES ${defaultedTotal.toLocaleString()}`
+    : "Accept transfer";
 
   return (
     <div className="space-y-3">
@@ -35,7 +43,7 @@ export function TransferActions({ token }: { token: string }) {
         disabled={!!loading}
         className="w-full rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white hover:bg-primary-700 disabled:opacity-60 transition-colors"
       >
-        {loading === "accept" ? "Accepting…" : "Accept transfer"}
+        {loading === "accept" ? (defaultedTotal > 0 ? "Redirecting to payment…" : "Accepting…") : acceptLabel}
       </button>
       <button
         onClick={() => handle("decline")}

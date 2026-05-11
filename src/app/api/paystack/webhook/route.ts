@@ -63,7 +63,70 @@ export async function POST(req: Request) {
     tierCap?: number | null;
     tierPrice?: number;
     isUpgrade?: boolean;
+    transferToken?: string;
+    toUserId?: string;
+    orderId?: string;
   } | null;
+
+  // ── Transfer default payment (recipient pays overdue instalments to claim ticket) ──
+  if (webhookMeta?.type === "transfer_default_payment" && webhookMeta?.transferToken) {
+    const transferToken = webhookMeta.transferToken as string;
+    const toUserId = webhookMeta.toUserId as string;
+    const orderId = webhookMeta.orderId as string;
+
+    await db.$transaction(async (tx) => {
+      const transfer = await tx.ticketTransfer.findUnique({
+        where: { token: transferToken },
+        include: { order: { include: { tickets: true, payments: true } } },
+      });
+      if (!transfer || transfer.status !== "PENDING") return;
+
+      const defaulted = transfer.order.payments.filter((p) => p.status === "DEFAULTED");
+      const totalPaid = defaulted.reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
+
+      // Mark each defaulted instalment as paid
+      for (const p of defaulted) {
+        await tx.installmentPayment.update({
+          where: { id: p.id },
+          data: { status: "PAID", paidAmount: p.amount, paidAt: new Date() },
+        });
+      }
+
+      // Update order paidAmount and status, transfer ownership
+      const newPaidAmount = Number(transfer.order.paidAmount) + totalPaid;
+      const isFullyPaid = newPaidAmount >= Number(transfer.order.totalAmount) - 0.01;
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          buyerId: toUserId,
+          originalBuyerId: transfer.order.originalBuyerId ?? transfer.fromUserId,
+          paidAmount: newPaidAmount,
+          status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID",
+        },
+      });
+
+      for (const ticket of transfer.order.tickets) {
+        await tx.ticket.update({ where: { id: ticket.id }, data: { currentOwnerId: toUserId } });
+      }
+
+      await tx.ticketTransfer.update({
+        where: { token: transferToken },
+        data: { status: "ACCEPTED", toUserId },
+      });
+
+      await tx.ticketTransfer.updateMany({
+        where: { orderId, status: "PENDING", token: { not: transferToken } },
+        data: { status: "CANCELLED" },
+      });
+
+      await tx.paystackTransaction.updateMany({
+        where: { reference },
+        data: { status: "success" },
+      });
+    });
+
+    return NextResponse.json({ received: true });
+  }
 
   if (webhookMeta?.type === "free_event_fee" && webhookMeta?.eventId) {
     const paidKes = Number(event.data.amount) / 100;
@@ -465,10 +528,10 @@ export async function POST(req: Request) {
     for (const payment of pendingPayments) {
       // Default warnings include the seller "defaulted" alert for all plans.
       // Buyer-facing warnings and pre-revocation seller alert are gated inside on enforceRevocation.
-      await scheduleDefaultWarnings(payment.id, order.id, payment.dueDate, plan.gracePeriodDays, event_.date, plan.enforceRevocation);
+      await scheduleDefaultWarnings(payment.id, order.id, payment.dueDate, plan.gracePeriodDays, event_.date, plan.enforceRevocation, plan.graceOverridesEventCutoff);
       if (plan.enforceRevocation) {
         await scheduleInstallmentReminder(payment.id, order.id, payment.dueDate);
-        await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays, event_.date);
+        await scheduleTicketRevocation(order.id, payment.id, payment.dueDate, plan.gracePeriodDays, event_.date, plan.graceOverridesEventCutoff);
       }
     }
   }

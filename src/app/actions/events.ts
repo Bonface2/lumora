@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { initializePayment, generateReference } from "@/lib/paystack";
 import { cancelInstallmentJobs, cancelSellerAlertJobs, scheduleDefaultWarnings, scheduleTicketRevocation } from "@/lib/queue";
-import { sendTicketRevocationNotice } from "@/lib/email";
+import { sendTicketRevocationNotice, sendTicketReinstatementNotice } from "@/lib/email";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -100,6 +100,7 @@ export async function createEvent(
                     initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
                     gracePeriodDays: cat.installmentPlan.gracePeriodDays,
                     enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
+                    graceOverridesEventCutoff: cat.installmentPlan.graceOverridesEventCutoff ?? false,
                     scheduleItems: {
                       create: cat.installmentPlan.scheduleItems.map((item: { installmentNumber: number; percentage: number; dueDate: string }) => ({
                         installmentNumber: item.installmentNumber,
@@ -318,6 +319,7 @@ export async function updateEvent(
                     initialPaymentPercent: cat.installmentPlan.initialPaymentPercent,
                     gracePeriodDays: cat.installmentPlan.gracePeriodDays,
                     enforceRevocation: cat.installmentPlan.enforceRevocation ?? true,
+                    graceOverridesEventCutoff: cat.installmentPlan.graceOverridesEventCutoff ?? false,
                     scheduleItems: {
                       create: cat.installmentPlan.scheduleItems.map((item) => ({
                         installmentNumber: item.installmentNumber,
@@ -447,6 +449,8 @@ export async function sellerRevokeOrder(
     where: { id: orderId },
     select: {
       status: true,
+      quantity: true,
+      ticketCategoryId: true,
       buyer: { select: { email: true, name: true } },
       ticketCategory: {
         select: {
@@ -476,6 +480,10 @@ export async function sellerRevokeOrder(
       where: { id: orderId },
       data: { status: "REVOKED" },
     }),
+    db.ticketCategory.update({
+      where: { id: order.ticketCategoryId },
+      data: { soldQuantity: { decrement: order.quantity } },
+    }),
   ]);
 
   try {
@@ -487,6 +495,66 @@ export async function sellerRevokeOrder(
     });
   } catch (err) {
     console.error("[sellerRevokeOrder] revocation email failed:", err);
+  }
+
+  return { ok: true, data: null };
+}
+
+export async function sellerReinstateOrder(
+  orderId: string
+): Promise<ApiResponse<null>> {
+  const session = await auth();
+  const role = session?.user?.role;
+  if (!session?.user || (role !== "SELLER" && role !== "ADMIN")) {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      status: true,
+      paidAmount: true,
+      totalAmount: true,
+      quantity: true,
+      ticketCategoryId: true,
+      buyer: { select: { email: true, name: true } },
+      ticketCategory: {
+        select: { event: { select: { sellerId: true, title: true } } },
+      },
+    },
+  });
+
+  if (!order) return { ok: false, error: "Order not found." };
+  if (role === "SELLER" && order.ticketCategory.event.sellerId !== session.user.id) {
+    return { ok: false, error: "Unauthorized." };
+  }
+  if (order.status !== "REVOKED") return { ok: false, error: "Order is not revoked." };
+
+  const isFullyPaid = Number(order.paidAmount) >= Number(order.totalAmount);
+  await db.$transaction([
+    db.ticket.updateMany({ where: { orderId }, data: { status: "ACTIVE" } }),
+    db.installmentPayment.updateMany({
+      where: { orderId, status: "DEFAULTED" },
+      data: { status: "OVERDUE" },
+    }),
+    db.order.update({
+      where: { id: orderId },
+      data: { status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" },
+    }),
+    db.ticketCategory.update({
+      where: { id: order.ticketCategoryId },
+      data: { soldQuantity: { increment: order.quantity } },
+    }),
+  ]);
+
+  try {
+    await sendTicketReinstatementNotice({
+      to: order.buyer.email,
+      name: order.buyer.name ?? "there",
+      eventTitle: order.ticketCategory.event.title,
+    });
+  } catch (err) {
+    console.error("[sellerReinstateOrder] reinstatement email failed:", err);
   }
 
   return { ok: true, data: null };

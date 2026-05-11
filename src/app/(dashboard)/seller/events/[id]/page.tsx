@@ -7,6 +7,8 @@ import { CompTicketForm } from "@/components/CompTicketForm";
 import { InviteForm } from "@/components/InviteForm";
 import { CopyInviteLinkButton } from "@/components/CopyInviteLinkButton";
 import { RevokeButton } from "@/components/RevokeButton";
+import { ReinstateButton } from "@/components/ReinstateButton";
+import { sellerReinstateOrder } from "@/app/actions/events";
 import { createScanToken } from "@/lib/scanToken";
 import type { EventStatus } from "@prisma/client";
 
@@ -555,9 +557,15 @@ export default async function SellerEventDetailPage({
                           </td>
                         )}
                         <td className="px-5 py-4 text-right">
-                          {order.status !== "REVOKED" && order.status !== "CANCELLED" && (
+                          {order.status === "REVOKED" ? (
+                            <ReinstateButton
+                              orderId={order.id}
+                              buyerName={order.buyer.name ?? order.buyer.email}
+                              action={sellerReinstateOrder}
+                            />
+                          ) : order.status !== "CANCELLED" ? (
                             <RevokeButton orderId={order.id} buyerName={order.buyer.name ?? order.buyer.email} />
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     );
