@@ -285,6 +285,24 @@ export async function adminUpdateUserRole(
   return { ok: true, data: null };
 }
 
+export async function adminDeleteUser(userId: string): Promise<ApiResponse<null>> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, error: "Unauthorized." };
+  if (admin.id === userId) return { ok: false, error: "You cannot delete your own account." };
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { role: true, _count: { select: { orders: true, events: true } } },
+  });
+  if (!user) return { ok: false, error: "User not found." };
+  if (user.role === "ADMIN") return { ok: false, error: "Cannot delete another admin account." };
+  if (user._count.orders > 0) return { ok: false, error: "Cannot delete a user who has orders. Revoke their access instead." };
+  if (user._count.events > 0) return { ok: false, error: "Cannot delete a user who has created events." };
+
+  await db.user.delete({ where: { id: userId } });
+  return { ok: true, data: null };
+}
+
 // ─── Payout management ────────────────────────────────────────────────────────
 
 export async function triggerSellerPayout(

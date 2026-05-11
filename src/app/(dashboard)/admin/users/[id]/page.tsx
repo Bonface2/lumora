@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { adminGetUser, adminGetUserOrders, adminUpdateUserRole } from "@/app/actions/admin";
+import { adminGetUser, adminGetUserOrders, adminUpdateUserRole, adminDeleteUser } from "@/app/actions/admin";
 
 type UserData = Awaited<ReturnType<typeof adminGetUser>>;
 type UserOrders = Awaited<ReturnType<typeof adminGetUserOrders>>;
@@ -35,6 +35,8 @@ export default function AdminUserDetailPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     Promise.all([adminGetUser(id), adminGetUserOrders(id)]).then(([u, o]) => {
@@ -43,6 +45,19 @@ export default function AdminUserDetailPage() {
       if (u) setSelectedRole(u.role as "BUYER" | "SELLER" | "ADMIN");
     });
   }, [id]);
+
+  async function handleDelete() {
+    if (!confirm(`Permanently delete ${user?.name ?? user?.email}? This cannot be undone.`)) return;
+    setDeleting(true);
+    setDeleteError("");
+    const res = await adminDeleteUser(id);
+    setDeleting(false);
+    if (!res.ok) {
+      setDeleteError(res.error);
+      return;
+    }
+    window.location.href = "/admin/users";
+  }
 
   async function handleSave() {
     setError("");
@@ -142,6 +157,24 @@ export default function AdminUserDetailPage() {
               Save role
             </Button>
           </div>
+        </div>
+
+        {/* Danger zone */}
+        <div className="rounded-2xl border border-red-200 bg-white p-6">
+          <h2 className="text-base font-black text-red-700 mb-1">Danger zone</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Permanently delete this account. Only possible if the user has no orders or events.
+          </p>
+          {deleteError && (
+            <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{deleteError}</p>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete user"}
+          </button>
         </div>
 
         {/* Recent orders */}
