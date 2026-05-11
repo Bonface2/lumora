@@ -11,6 +11,7 @@ import { ReinstateButton } from "@/components/ReinstateButton";
 import { sellerReinstateOrder } from "@/app/actions/events";
 import { createScanToken } from "@/lib/scanToken";
 import { ExpansionRequestButton } from "./ExpansionRequestButton";
+import { CancelGroupTripButton } from "./CancelGroupTripButton";
 import { getPlatformConfig } from "@/lib/platformConfig";
 import type { EventStatus } from "@prisma/client";
 
@@ -78,6 +79,7 @@ export default async function SellerEventDetailPage({
 
 
   const paidCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
+  const totalCollected = participantOrders.reduce((s, o) => s + Number(o.paidAmount), 0);
   const emailInviteSet = new Set(invites.map((inv: { email: string }) => inv.email.toLowerCase()));
   const totalSold = paidCategories.reduce((s, c) => s + c.soldQuantity, 0);
   const totalAvail = paidCategories.reduce((s, c) => s + c.totalQuantity, 0);
@@ -222,6 +224,13 @@ export default async function SellerEventDetailPage({
                   Edit
                 </button>
               </a>
+              {event.experienceType === "GROUP_TRIP" && (event.status === "DRAFT" || event.status === "PUBLISHED") && (
+                <CancelGroupTripButton
+                  eventId={id}
+                  isDraft={event.status === "DRAFT"}
+                  totalCollected={totalCollected}
+                />
+              )}
               {(event.status === "DRAFT" || event.status === "PUBLISHED") && (
                 <PublishButton eventId={id} status={event.status} />
               )}

@@ -255,8 +255,11 @@ export default async function TermsPage() {
           <ul className="space-y-2">
             <Bullet>Refund eligibility is determined by the individual Seller's refund policy, displayed on the event page.</Bullet>
             <Bullet>Installment deposits and partial payments are <strong className="text-gray-800">non-refundable</strong> in the event of Buyer default.</Bullet>
-            <Bullet>If a Seller cancels an event, Buyers are entitled to a full refund of all amounts paid to date.</Bullet>
+            <Bullet>If a Seller cancels a published event, Buyers are entitled to a full refund of all amounts paid to date.</Bullet>
             <Bullet>Refunds, where approved, are processed to the original payment method within 5–10 business days.</Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Seller cancellation of a published event:</strong> when a Seller cancels an event for which participant payments have been collected, the total amount collected — less any accrued Lumora platform fees — will be disbursed to the Seller&apos;s registered payout account within 5–10 business days. Lumora will notify the Seller by email once the disbursement has been processed.
+            </Bullet>
           </ul>
         </Section>
 

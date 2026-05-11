@@ -10,6 +10,8 @@ import {
   sendTicketRevocationNotice,
   sendTicketReinstatementNotice,
   sendGroupTripPendingNotice,
+  sendGroupTripCancellationSellerNotice,
+  sendGroupTripCancellationAdminWorkItem,
 } from "@/lib/email";
 import { getPlatformConfig } from "@/lib/platformConfig";
 import type { ApiResponse } from "@/types";
@@ -66,6 +68,26 @@ export async function createEvent(
   const isGroupTrip = data.experienceType === "GROUP_TRIP";
   if (isGroupTrip) {
     data.isPrivate = true;
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const groupTripsThisMonth = await db.event.count({
+      where: {
+        sellerId: session.user.id,
+        experienceType: "GROUP_TRIP",
+        createdAt: { gte: startOfMonth },
+        status: { not: "CANCELLED" },
+      },
+    });
+
+    if (groupTripsThisMonth >= 1) {
+      const nextMonth = new Date(startOfMonth);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const nextMonthLabel = nextMonth.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      return { ok: false, error: `You can only create one group trip per month. You can create your next one from ${nextMonthLabel}.` };
+    }
   }
 
   // For PAID non-group-trip events, verify payout method belongs to this seller
@@ -770,5 +792,76 @@ export async function requestCapacityExpansion(
     console.error("[requestCapacityExpansion] email failed:", err);
   }
 
+  return { ok: true, data: null };
+}
+
+// ─── Cancel group trip ────────────────────────────────────────────────────────
+
+export async function cancelGroupTrip(eventId: string): Promise<ApiResponse<null>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") return { ok: false, error: "Unauthorized." };
+
+  const event = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+    select: { id: true, title: true, status: true, experienceType: true },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.experienceType !== "GROUP_TRIP") return { ok: false, error: "Only group trips can be cancelled here." };
+  if (event.status === "CANCELLED") return { ok: false, error: "This trip is already cancelled." };
+
+  const isPublished = event.status === "PUBLISHED";
+
+  let totalCollected = 0;
+  let buyerCount = 0;
+
+  if (isPublished) {
+    const [agg, count] = await Promise.all([
+      db.order.aggregate({
+        where: {
+          ticketCategory: { eventId },
+          status: { notIn: ["CANCELLED", "REVOKED"] },
+        },
+        _sum: { paidAmount: true },
+      }),
+      db.order.count({
+        where: {
+          ticketCategory: { eventId },
+          status: { notIn: ["CANCELLED", "REVOKED"] },
+        },
+      }),
+    ]);
+    totalCollected = Number(agg._sum.paidAmount ?? 0);
+    buyerCount = count;
+  }
+
+  await db.event.update({ where: { id: eventId }, data: { status: "CANCELLED" } });
+
+  if (isPublished && totalCollected > 0) {
+    const sellerEmail = session.user.email ?? "";
+    const sellerName = session.user.name ?? sellerEmail;
+    try {
+      await Promise.all([
+        sendGroupTripCancellationSellerNotice({
+          to: sellerEmail,
+          sellerName,
+          eventTitle: event.title,
+          totalCollected,
+        }),
+        sendGroupTripCancellationAdminWorkItem({
+          eventId,
+          eventTitle: event.title,
+          sellerName,
+          sellerEmail,
+          totalCollected,
+          buyerCount,
+        }),
+      ]);
+    } catch (err) {
+      console.error("[cancelGroupTrip] email failed:", err);
+    }
+  }
+
+  revalidatePath("/seller");
+  revalidatePath(`/seller/events/${eventId}`);
   return { ok: true, data: null };
 }

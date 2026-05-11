@@ -1285,18 +1285,51 @@ export async function sendGroupTripRejectedNotice({
   sellerName,
   eventTitle,
   reason,
+  eventId,
+  autoApproveCap,
 }: {
   to: string;
   sellerName: string;
   eventTitle: string;
   reason: string;
+  eventId: string;
+  autoApproveCap: number;
 }) {
+  const publishWithCapUrl = `${APP_URL}/seller/events/${eventId}`;
+  const inviteOnlyUrl = `${APP_URL}/seller/events/new`;
+  const publicUrl = `${APP_URL}/seller/events/new`;
   const body = `
-    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your group trip and are unable to approve it at this time.</p>
+    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your group trip and are unable to approve it for the requested group size at this time.</p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
       <p style="margin:0;font-weight:700;color:#991b1b;">${eventTitle}</p>
       <p style="margin:8px 0 0;font-size:13px;color:#7f1d1d;">${reason}</p>
     </div>
+    <p style="margin:0 0 20px;color:#475569;font-size:14px;">You still have a few options — pick whichever works best for you:</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr>
+        <td style="padding:0 5px 0 0;width:33%;vertical-align:top;">
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-weight:700;color:#0f172a;font-size:13px;">Publish with ${autoApproveCap} guests</p>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;">Go ahead with your trip, capped at ${autoApproveCap} guests — no review needed.</p>
+            <a href="${publishWithCapUrl}" style="display:inline-block;background:#22c55e;color:#fff;font-weight:700;font-size:12px;padding:9px 16px;border-radius:10px;text-decoration:none;">Publish anyway →</a>
+          </div>
+        </td>
+        <td style="padding:0 5px;width:33%;vertical-align:top;">
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-weight:700;color:#0f172a;font-size:13px;">Invite-Only Experience</p>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;">Private event by invitation only. You control who attends.</p>
+            <a href="${inviteOnlyUrl}" style="display:inline-block;background:#0f172a;color:#fff;font-weight:700;font-size:12px;padding:9px 16px;border-radius:10px;text-decoration:none;">Create invite-only →</a>
+          </div>
+        </td>
+        <td style="padding:0 0 0 5px;width:33%;vertical-align:top;">
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-weight:700;color:#0f172a;font-size:13px;">Public Experience</p>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;">Listed on the Lumora marketplace, open to all.</p>
+            <a href="${publicUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:12px;padding:9px 16px;border-radius:10px;text-decoration:none;">Create public event →</a>
+          </div>
+        </td>
+      </tr>
+    </table>
     <p style="margin:0 0 16px;color:#475569;font-size:14px;">If you believe this is a mistake or have further questions, please contact our support team.</p>`;
 
   await send({
@@ -1378,6 +1411,82 @@ export async function sendGroupTripExpansionApprovedNotice({
   });
 }
 
+export async function sendGroupTripCancellationSellerNotice({
+  to,
+  sellerName,
+  eventTitle,
+  totalCollected,
+}: {
+  to: string;
+  sellerName: string;
+  eventTitle: string;
+  totalCollected: number;
+}) {
+  const body = `
+    <p style="margin:0 0 16px;">Hi ${sellerName}, your group trip has been cancelled as requested.</p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#991b1b;">${eventTitle}</p>
+      <p style="margin:6px 0 0;font-size:13px;color:#7f1d1d;">Status: Cancelled</p>
+    </div>
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">
+      A total of <strong style="color:#0f172a;">KES ${totalCollected.toLocaleString()}</strong> was collected from participants.
+      The net amount — after deducting accrued platform fees — will be disbursed to your registered account within <strong style="color:#0f172a;">5–10 business days</strong>.
+      Our team has been notified and will process this shortly.
+    </p>
+    <p style="margin:0;color:#94a3b8;font-size:13px;">If you have questions, please reach out at <a href="mailto:hello@lumora.co" style="color:#0f9699;">hello@lumora.co</a>.</p>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your group trip "${eventTitle}" has been cancelled`,
+    html: shell({ preheader: `Your group trip has been cancelled — disbursement incoming`, headline: "Group trip cancelled", label: "Group trip", accentColor: "#ef4444", body }),
+  });
+}
+
+export async function sendGroupTripCancellationAdminWorkItem({
+  eventId,
+  eventTitle,
+  sellerName,
+  sellerEmail,
+  totalCollected,
+  buyerCount,
+}: {
+  eventId: string;
+  eventTitle: string;
+  sellerName: string;
+  sellerEmail: string;
+  totalCollected: number;
+  buyerCount: number;
+}) {
+  const eventUrl = `${APP_URL}/admin/group-trips`;
+  const body = `
+    <p style="margin:0 0 16px;">A seller has cancelled a published group trip with outstanding participant payments. Please process the disbursement.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+      <tr><td style="padding:8px 0;color:#64748b;width:160px;">Event</td><td style="padding:8px 0;font-weight:600;color:#0f172a;">${eventTitle}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Event ID</td><td style="padding:8px 0;font-size:12px;color:#64748b;font-family:monospace;">${eventId}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Seller</td><td style="padding:8px 0;color:#0f172a;">${sellerName} (<a href="mailto:${sellerEmail}" style="color:#0f9699;">${sellerEmail}</a>)</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Participants</td><td style="padding:8px 0;color:#0f172a;">${buyerCount} order${buyerCount !== 1 ? "s" : ""}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Total collected</td><td style="padding:8px 0;font-weight:700;color:#dc2626;">KES ${totalCollected.toLocaleString()}</td></tr>
+    </table>
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#92400e;">Action required</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#78350f;">
+        Disburse KES ${totalCollected.toLocaleString()} less accrued platform fees to the seller's registered payout account.
+        Check the seller's payout method in their account settings before processing.
+      </p>
+    </div>
+    <div style="text-align:center;">
+      <a href="${eventUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">View admin console</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to: ADMIN_EMAIL,
+    subject: `[Action required] Disburse funds — cancelled group trip: "${eventTitle}"`,
+    html: shell({ preheader: `Disbursement needed for cancelled group trip: ${eventTitle}`, headline: "Disbursement work item", label: "Admin", accentColor: "#f59e0b", body }),
+  });
+}
+
 export async function sendGroupTripExpansionRejectedNotice({
   to,
   sellerName,
@@ -1389,12 +1498,33 @@ export async function sendGroupTripExpansionRejectedNotice({
   eventTitle: string;
   note: string;
 }) {
+  const inviteOnlyUrl = `${APP_URL}/seller/events/new`;
+  const publicUrl = `${APP_URL}/seller/events/new`;
   const body = `
-    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your capacity expansion request and are unable to approve it.</p>
+    <p style="margin:0 0 16px;">Hi ${sellerName}, we've reviewed your capacity expansion request and are unable to approve it. The capacity for this event will remain unchanged.</p>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
       <p style="margin:0;font-weight:700;color:#991b1b;">${eventTitle}</p>
       <p style="margin:8px 0 0;font-size:13px;color:#7f1d1d;">${note}</p>
     </div>
+    <p style="margin:0 0 20px;color:#475569;font-size:14px;">If you need to host a larger gathering, you might find one of these a great fit:</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr>
+        <td style="padding:0 8px 0 0;width:50%;vertical-align:top;">
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;">
+            <p style="margin:0 0 4px;font-weight:700;color:#0f172a;font-size:14px;">Invite-Only Experience</p>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;">Private event, accessible by invitation link or email only. You control who attends.</p>
+            <a href="${inviteOnlyUrl}" style="display:inline-block;background:#0f172a;color:#fff;font-weight:700;font-size:13px;padding:10px 20px;border-radius:10px;text-decoration:none;">Create invite-only →</a>
+          </div>
+        </td>
+        <td style="padding:0 0 0 8px;width:50%;vertical-align:top;">
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;">
+            <p style="margin:0 0 4px;font-weight:700;color:#0f172a;font-size:14px;">Public Experience</p>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;">Listed on the Lumora marketplace, open to all. Great for tours, workshops, and events.</p>
+            <a href="${publicUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:13px;padding:10px 20px;border-radius:10px;text-decoration:none;">Create public event →</a>
+          </div>
+        </td>
+      </tr>
+    </table>
     <p style="margin:0 0 16px;color:#475569;font-size:14px;">If you have further questions, please reach out to our support team.</p>`;
 
   await send({

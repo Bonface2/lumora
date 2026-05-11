@@ -529,7 +529,12 @@ export async function rejectGroupTrip(eventId: string, reason: string): Promise<
   if (!event) return { ok: false, error: "Event not found." };
   if (event.status !== "PENDING_REVIEW") return { ok: false, error: "Event is not pending review." };
 
-  await db.event.update({ where: { id: eventId }, data: { status: "CANCELLED" } });
+  const { groupTripAutoApproveCap } = await getPlatformConfig();
+
+  await db.event.update({
+    where: { id: eventId },
+    data: { status: "DRAFT", groupTripCapacity: groupTripAutoApproveCap },
+  });
   revalidatePath("/admin/group-trips");
 
   try {
@@ -538,6 +543,8 @@ export async function rejectGroupTrip(eventId: string, reason: string): Promise<
       sellerName: event.seller.name ?? "there",
       eventTitle: event.title,
       reason,
+      eventId,
+      autoApproveCap: groupTripAutoApproveCap,
     });
   } catch (err) {
     console.error("[rejectGroupTrip] email failed:", err);
