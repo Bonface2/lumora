@@ -33,21 +33,23 @@ export function computeSellerNet(
   eventType: string,
   experienceType: string,
   platformFeePercent: Decimal | number | null,
-  config: PlatformConfigData
+  config: PlatformConfigData,
+  platformFlatFee?: Decimal | number | null,
 ): { sellerNet: number; platformFee: number; feeLabel: string } {
   // FREE events: no transaction cut — they paid an activation fee upfront
   if (eventType === "FREE") {
     return { sellerNet: grossAmount, platformFee: 0, feeLabel: "Activation fee" };
   }
 
-  // GROUP_TRIP: flat fee per registration
+  // GROUP_TRIP: flat fee per registration (per-event override takes priority)
   if (experienceType === "GROUP_TRIP") {
-    const fee = config.groupTripFlatFee;
+    const fee = platformFlatFee != null ? Number(platformFlatFee) : config.groupTripFlatFee;
     const platformFee = Math.min(fee, grossAmount);
+    const isCustom = platformFlatFee != null;
     return {
       sellerNet: grossAmount - platformFee,
       platformFee,
-      feeLabel: `KES ${fee.toLocaleString()} flat`,
+      feeLabel: `KES ${fee.toLocaleString()} flat${isCustom ? " (custom)" : ""}`,
     };
   }
 

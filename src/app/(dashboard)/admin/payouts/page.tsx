@@ -160,7 +160,7 @@ export default function AdminPayoutsPage() {
                               </td>
                               <td className="px-4 py-2.5 text-center">
                                 <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-xs font-bold text-primary-700">
-                                  {ev.feePercent}%
+                                  {ev.feeLabel}
                                 </span>
                               </td>
                               <td className="px-4 py-2.5 text-right text-gray-600">

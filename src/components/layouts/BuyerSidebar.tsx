@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
 
 const nav = [
   {
@@ -33,10 +33,8 @@ const nav = [
   },
 ];
 
-export function BuyerSidebar() {
+export function BuyerSidebar({ user }: { user?: { name?: string | null; email?: string | null } }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const user = session?.user;
   const initials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : user?.email?.[0]?.toUpperCase() ?? "?";

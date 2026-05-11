@@ -161,6 +161,7 @@ model Event {
   isPrivate          Boolean        @default(false)
   platformFeePaid    Boolean     @default(false)
   platformFeePercent Decimal?    @db.Decimal(5, 2)
+  platformFlatFee    Decimal?    @db.Decimal(10, 2) // per-event override for GROUP_TRIP flat fee
   platformFeeAmount  Decimal?    @db.Decimal(10, 2)
   attendeeCap        Int?
   payoutMethodId     String?

@@ -46,9 +46,25 @@ export async function getAdminEvent(eventId: string) {
       eventType: true,
       experienceType: true,
       platformFeePercent: true,
+      platformFlatFee: true,
       seller: { select: { name: true, email: true } },
     },
   });
+}
+
+export async function setEventFlatFee(
+  eventId: string,
+  flatFee: number | null,
+): Promise<ApiResponse<null>> {
+  if (!(await requireAdmin())) return { ok: false, error: "Unauthorized." };
+  if (flatFee !== null && flatFee < 0) {
+    return { ok: false, error: "Fee cannot be negative." };
+  }
+  await db.event.update({
+    where: { id: eventId },
+    data: { platformFlatFee: flatFee },
+  });
+  return { ok: true, data: null };
 }
 
 export async function getAdminPlatformConfig() {
@@ -96,6 +112,7 @@ export async function getSellerBalances() {
               eventType: true,
               experienceType: true,
               platformFeePercent: true,
+              platformFlatFee: true,
               payoutMethodId: true,
               payoutMethod: {
                 select: {
@@ -139,7 +156,7 @@ export async function getSellerBalances() {
     eventId: string;
     title: string;
     date: Date;
-    feePercent: number;
+    feeLabel: string;
     grossAmount: number;
     sellerNet: number;
   }>> = {};
@@ -152,7 +169,8 @@ export async function getSellerBalances() {
       event.eventType,
       event.experienceType,
       event.platformFeePercent,
-      platformConfig
+      platformConfig,
+      event.platformFlatFee,
     );
     const key = `${event.sellerId}:${event.payoutMethodId ?? "none"}`;
 
@@ -176,11 +194,11 @@ export async function getSellerBalances() {
     if (!eventBreakdowns[key]) eventBreakdowns[key] = {};
     const evMap = eventBreakdowns[key];
     if (!evMap[event.id]) {
-      evMap[event.id] = { eventId: event.id, title: event.title, date: event.date, feePercent: platformFee, grossAmount: 0, sellerNet: 0 };
+      evMap[event.id] = { eventId: event.id, title: event.title, date: event.date, feeLabel, grossAmount: 0, sellerNet: 0 };
     }
     evMap[event.id].grossAmount += orderGross;
     evMap[event.id].sellerNet += sellerNet;
-    void feeLabel; // used in admin events list, not breakdown
+    void platformFee;
   }
 
   // Successful payouts grouped by (sellerId, payoutMethodId)

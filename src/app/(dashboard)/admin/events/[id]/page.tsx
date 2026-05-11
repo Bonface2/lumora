@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { setEventPlatformFee, getAdminEvent, getAdminPlatformConfig } from "@/app/actions/admin";
+import { setEventPlatformFee, setEventFlatFee, getAdminEvent, getAdminPlatformConfig } from "@/app/actions/admin";
 import type { PlatformConfigData } from "@/lib/platformConfig";
 
 type EventData = Awaited<ReturnType<typeof getAdminEvent>>;
@@ -14,6 +14,8 @@ export default function AdminEventFeePage() {
   const [config, setConfig] = useState<PlatformConfigData | null>(null);
   const [feeInput, setFeeInput] = useState("");
   const [useDefault, setUseDefault] = useState(true);
+  const [flatFeeInput, setFlatFeeInput] = useState("");
+  const [useDefaultFlat, setUseDefaultFlat] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -28,6 +30,12 @@ export default function AdminEventFeePage() {
       } else {
         setUseDefault(true);
       }
+      if (e?.platformFlatFee !== null && e?.platformFlatFee !== undefined) {
+        setFlatFeeInput(String(Number(e.platformFlatFee)));
+        setUseDefaultFlat(false);
+      } else {
+        setUseDefaultFlat(true);
+      }
     });
   }, [id]);
 
@@ -36,20 +44,29 @@ export default function AdminEventFeePage() {
     setSuccess(false);
     setSaving(true);
 
-    const feePercent = useDefault ? null : parseFloat(feeInput);
+    if (isGroupTrip) {
+      const flatFee = useDefaultFlat ? null : parseFloat(flatFeeInput);
+      if (!useDefaultFlat && (isNaN(flatFee!) || flatFee! < 0)) {
+        setError("Enter a valid flat fee (0 or more).");
+        setSaving(false);
+        return;
+      }
+      const res = await setEventFlatFee(id, flatFee);
+      setSaving(false);
+      if (!res.ok) { setError(res.error); return; }
+      setSuccess(true);
+      return;
+    }
 
+    const feePercent = useDefault ? null : parseFloat(feeInput);
     if (!useDefault && (isNaN(feePercent!) || feePercent! < 0 || feePercent! > 100)) {
       setError("Enter a valid percentage between 0 and 100.");
       setSaving(false);
       return;
     }
-
     const res = await setEventPlatformFee(id, feePercent);
     setSaving(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
+    if (!res.ok) { setError(res.error); return; }
     setSuccess(true);
   }
 
@@ -93,22 +110,62 @@ export default function AdminEventFeePage() {
             </div>
           </div>
         ) : isGroupTrip ? (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
             <div className="flex items-start gap-3">
               <span className="mt-0.5 text-lg">🚌</span>
               <div>
                 <p className="font-semibold text-gray-900">Flat fee per registration</p>
                 <p className="mt-1 text-sm text-gray-500">
-                  Group trip events are charged a flat <strong>KES {config.groupTripFlatFee.toLocaleString()}</strong> per registration instead of a percentage. This rate is configured globally.
+                  Group trip events are charged a flat fee per registration instead of a percentage.
+                  The global default is <strong>KES {config.groupTripFlatFee.toLocaleString()}</strong>.
                 </p>
-                <a
-                  href="/admin/platform-fees"
-                  className="mt-3 inline-block text-sm font-semibold text-primary-600 hover:underline"
-                >
-                  Adjust in Platform fees →
-                </a>
               </div>
             </div>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useDefaultFlat}
+                onChange={(e) => {
+                  setUseDefaultFlat(e.target.checked);
+                  setError("");
+                  setSuccess(false);
+                  if (e.target.checked) setFlatFeeInput("");
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                Use global default (KES {config.groupTripFlatFee.toLocaleString()} flat)
+              </span>
+            </label>
+
+            {!useDefaultFlat && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Custom flat fee per registration (KES)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">KES</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={flatFeeInput}
+                    onChange={(e) => { setFlatFeeInput(e.target.value); setError(""); setSuccess(false); }}
+                    placeholder={String(config.groupTripFlatFee)}
+                    className="w-36 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-500">per registration</span>
+                </div>
+              </div>
+            )}
+
+            {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+            {success && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Fee updated successfully.</p>}
+
+            <Button onClick={handleSave} loading={saving} className="w-full">
+              Save fee
+            </Button>
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">

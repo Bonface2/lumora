@@ -8,7 +8,7 @@ export default async function BuyerLayout({ children }: { children: React.ReactN
   if (!session?.user) redirect("/login");
 
   return (
-    <DashboardLayout sidebar={<BuyerSidebar />}>
+    <DashboardLayout sidebar={<BuyerSidebar user={session.user} />}>
       {children}
     </DashboardLayout>
   );

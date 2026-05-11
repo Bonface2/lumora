@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
 import { initializePayment, generateReference } from "@/lib/paystack";
 import { cancelInstallmentJobs, cancelSellerAlertJobs, scheduleDefaultWarnings, scheduleTicketRevocation } from "@/lib/queue";
+import { sendTicketRevocationNotice } from "@/lib/email";
 import type { ApiResponse } from "@/types";
 
 function slugify(text: string): string {
@@ -437,7 +438,8 @@ export async function sellerRevokeOrder(
   orderId: string
 ): Promise<ApiResponse<null>> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "SELLER") {
+  const role = session?.user?.role;
+  if (!session?.user || (role !== "SELLER" && role !== "ADMIN")) {
     return { ok: false, error: "Unauthorized." };
   }
 
@@ -445,14 +447,17 @@ export async function sellerRevokeOrder(
     where: { id: orderId },
     select: {
       status: true,
+      buyer: { select: { email: true, name: true } },
       ticketCategory: {
-        select: { event: { select: { sellerId: true } } },
+        select: {
+          event: { select: { sellerId: true, title: true } },
+        },
       },
     },
   });
 
   if (!order) return { ok: false, error: "Order not found." };
-  if (order.ticketCategory.event.sellerId !== session.user.id) {
+  if (role === "SELLER" && order.ticketCategory.event.sellerId !== session.user.id) {
     return { ok: false, error: "Unauthorized." };
   }
   if (order.status === "REVOKED") return { ok: false, error: "Order already revoked." };
@@ -472,6 +477,17 @@ export async function sellerRevokeOrder(
       data: { status: "REVOKED" },
     }),
   ]);
+
+  try {
+    await sendTicketRevocationNotice({
+      to: order.buyer.email,
+      name: order.buyer.name ?? "there",
+      eventTitle: order.ticketCategory.event.title,
+      reason: "Your ticket has been revoked by the event organiser.",
+    });
+  } catch (err) {
+    console.error("[sellerRevokeOrder] revocation email failed:", err);
+  }
 
   return { ok: true, data: null };
 }

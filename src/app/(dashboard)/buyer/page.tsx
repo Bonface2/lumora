@@ -54,14 +54,7 @@ function calcRevocation(
   return { label: `${days} days to revocation.`, level: "caution" };
 }
 
-type Tab = "all" | "paid" | "installments" | "defaulted";
-
-const TABS: { value: Tab; label: string }[] = [
-  { value: "all",          label: "All tickets" },
-  { value: "paid",         label: "Paid in full" },
-  { value: "installments", label: "Installments" },
-  { value: "defaulted",    label: "Defaulted" },
-];
+type Tab = "all" | "paid" | "installments" | "defaulted" | "revoked";
 
 export default async function BuyerTicketsPage({
   searchParams,
@@ -70,7 +63,8 @@ export default async function BuyerTicketsPage({
 }) {
   const session = await auth();
   const { tab: rawTab } = await searchParams;
-  const tab = (TABS.find((t) => t.value === rawTab)?.value ?? "all") as Tab;
+  const validTabs: Tab[] = ["all", "paid", "installments", "defaulted", "revoked"];
+  const tab = (validTabs.includes(rawTab as Tab) ? rawTab : "all") as Tab;
   const now = new Date();
 
   // An order is "in default" if its status is DEFAULTED/REVOKED OR if it is
@@ -84,7 +78,7 @@ export default async function BuyerTicketsPage({
   const defaultedWhere: Prisma.OrderWhereInput = {
     buyerId: session!.user.id,
     OR: [
-      { status: { in: ["DEFAULTED", "REVOKED"] as OrderStatus[] } },
+      { status: "DEFAULTED" as OrderStatus },
       {
         status: "PARTIAL_PAID" as OrderStatus,
         payments: {
@@ -98,10 +92,16 @@ export default async function BuyerTicketsPage({
     ],
   };
 
+  const revokedWhere: Prisma.OrderWhereInput = {
+    buyerId: session!.user.id,
+    status: "REVOKED" as OrderStatus,
+  };
+
   const ordersWhere: Prisma.OrderWhereInput = (() => {
     if (tab === "paid")         return { buyerId: session!.user.id, status: "PAID_IN_FULL" };
     if (tab === "installments") return { buyerId: session!.user.id, status: "PARTIAL_PAID" };
     if (tab === "defaulted")    return defaultedWhere;
+    if (tab === "revoked")      return revokedWhere;
     return { buyerId: session!.user.id, status: { notIn: ["PENDING", "CANCELLED"] as OrderStatus[] } };
   })();
 
@@ -140,10 +140,19 @@ export default async function BuyerTicketsPage({
     paid:         allOrders.filter((o) => o.status === "PAID_IN_FULL").length,
     installments: allOrders.filter((o) => o.status === "PARTIAL_PAID").length,
     defaulted:    allOrders.filter(
-      (o) => o.status === "DEFAULTED" || o.status === "REVOKED" ||
+      (o) => o.status === "DEFAULTED" ||
              (o.status === "PARTIAL_PAID" && o.payments.length > 0)
     ).length,
+    revoked:      allOrders.filter((o) => o.status === "REVOKED").length,
   };
+
+  const TABS: { value: Tab; label: string }[] = [
+    { value: "all",          label: "All tickets" },
+    { value: "paid",         label: "Paid in full" },
+    { value: "installments", label: "Installments" },
+    { value: "defaulted",    label: "Defaulted" },
+    ...(counts.revoked > 0 ? [{ value: "revoked" as Tab, label: "Revoked" }] : []),
+  ];
 
   const user = await db.user.findUnique({
     where: { id: session!.user.id },
@@ -210,18 +219,17 @@ export default async function BuyerTicketsPage({
           {TABS.map((t) => {
             const count = counts[t.value];
             const active = tab === t.value;
-            const isDefaulted = t.value === "defaulted";
-            const hasDefaulted = isDefaulted && counts.defaulted > 0;
+            const isDanger = t.value === "defaulted" || t.value === "revoked";
             return (
               <Link
                 key={t.value}
                 href={t.value === "all" ? "/buyer" : `/buyer?tab=${t.value}`}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
                   active
-                    ? isDefaulted
+                    ? isDanger
                       ? "bg-red-600 text-white shadow-sm"
                       : "bg-primary-600 text-white shadow-sm"
-                    : hasDefaulted
+                    : isDanger
                     ? "bg-red-50 text-red-700 border border-red-300 hover:bg-red-100"
                     : "bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:text-gray-900"
                 }`}
@@ -230,7 +238,7 @@ export default async function BuyerTicketsPage({
                 <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${
                   active
                     ? "bg-white/20 text-white"
-                    : hasDefaulted
+                    : isDanger
                     ? "bg-red-200 text-red-700"
                     : "bg-gray-100 text-gray-500"
                 }`}>
