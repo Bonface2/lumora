@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format, addDays } from "date-fns";
 import { initializePayment, toKobo, generateReference } from "@/lib/paystack";
+import { generateTicketNumber, eventTitlePrefix } from "@/lib/tickets";
 import type { ApiResponse } from "@/types";
 
 const TRANSFER_EXPIRY_DAYS = 1;
@@ -214,11 +215,13 @@ export async function respondToTransfer(
     return { ok: true, data: { paystackUrl: init.data.authorization_url } };
   }
 
-  // Accept — transfer ownership in a transaction
+  // Accept — transfer ownership in a transaction, regenerating ticket numbers
+  const newTicketNumbers: string[] = [];
+  const prefix = eventTitlePrefix(transfer.order.ticketCategory.event.title);
+
   await db.$transaction(async (tx) => {
     const newOwnerId = session.user!.id;
 
-    // Update order ownership
     await tx.order.update({
       where: { id: transfer.orderId },
       data: {
@@ -227,26 +230,28 @@ export async function respondToTransfer(
       },
     });
 
-    // Update all ticket ownership
+    // Regenerate each ticket number so the original QR codes are invalidated
     for (const ticket of transfer.order.tickets) {
+      const newNumber = generateTicketNumber(prefix);
+      newTicketNumbers.push(newNumber);
       await tx.ticket.update({
         where: { id: ticket.id },
-        data: { currentOwnerId: newOwnerId },
+        data: { currentOwnerId: newOwnerId, ticketNumber: newNumber, qrCode: null },
       });
     }
 
-    // Mark transfer as accepted, record the recipient user id
     await tx.ticketTransfer.update({
       where: { token },
       data: { status: "ACCEPTED", toUserId: newOwnerId },
     });
 
-    // Cancel any other pending transfers for the same order
     await tx.ticketTransfer.updateMany({
       where: { orderId: transfer.orderId, status: "PENDING", token: { not: token } },
       data: { status: "CANCELLED" },
     });
   });
+
+  const event_ = transfer.order.ticketCategory.event;
 
   // Notify sender
   try {
@@ -254,12 +259,28 @@ export async function respondToTransfer(
     await sendTransferNotification({
       to: transfer.fromUser.email,
       name: transfer.fromUser.name ?? "there",
-      eventTitle: transfer.order.ticketCategory.event.title,
+      eventTitle: event_.title,
       toName: session.user.name ?? session.user.email ?? "The recipient",
       wasAccepted: true,
     });
   } catch (err) {
     console.error("[transfer] accept notification threw:", err);
+  }
+
+  // Send new ticket with regenerated QR to the recipient
+  try {
+    const { sendTicketConfirmation } = await import("@/lib/email");
+    await sendTicketConfirmation({
+      to: session.user.email!,
+      name: session.user.name ?? "there",
+      eventTitle: event_.title,
+      categoryName: transfer.order.ticketCategory.name,
+      ticketNumbers: newTicketNumbers,
+      eventDate: format(event_.date, "EEEE, dd MMMM yyyy · HH:mm"),
+      venue: `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`,
+    });
+  } catch (err) {
+    console.error("[transfer] ticket confirmation email threw:", err);
   }
 
   return { ok: true, data: {} };

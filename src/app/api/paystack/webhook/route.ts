@@ -8,16 +8,10 @@ import {
   scheduleTicketRevocation,
   cancelInstallmentJobs,
 } from "@/lib/queue";
+import { generateTicketNumber, eventTitlePrefix } from "@/lib/tickets";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
-
-function generateTicketNumber(prefix: string): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 chars — divides 256 evenly, no modulo bias
-  const bytes = crypto.randomBytes(8);
-  const random = Array.from(bytes, (b) => chars[b % chars.length]).join("");
-  return `${prefix}-${random}`;
-}
 
 export async function POST(req: Request) {
   console.log("[webhook] POST received at", new Date().toISOString());
@@ -74,17 +68,37 @@ export async function POST(req: Request) {
     const toUserId = webhookMeta.toUserId as string;
     const orderId = webhookMeta.orderId as string;
 
+    const newTicketNumbers: string[] = [];
+    let transferEventTitle = "";
+    let transferCategoryName = "";
+    let transferEventDate = "";
+    let transferVenue = "";
+
     await db.$transaction(async (tx) => {
       const transfer = await tx.ticketTransfer.findUnique({
         where: { token: transferToken },
-        include: { order: { include: { tickets: true, payments: true } } },
+        include: {
+          order: {
+            include: {
+              tickets: true,
+              payments: true,
+              ticketCategory: { include: { event: true } },
+            },
+          },
+        },
       });
       if (!transfer || transfer.status !== "PENDING") return;
+
+      const event_ = transfer.order.ticketCategory.event;
+      const prefix = eventTitlePrefix(event_.title);
+      transferEventTitle = event_.title;
+      transferCategoryName = transfer.order.ticketCategory.name;
+      transferEventDate = format(event_.date, "EEEE, dd MMMM yyyy · HH:mm");
+      transferVenue = `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`;
 
       const defaulted = transfer.order.payments.filter((p) => p.status === "DEFAULTED");
       const totalPaid = defaulted.reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
 
-      // Mark each defaulted instalment as paid
       for (const p of defaulted) {
         await tx.installmentPayment.update({
           where: { id: p.id },
@@ -92,7 +106,6 @@ export async function POST(req: Request) {
         });
       }
 
-      // Update order paidAmount and status, transfer ownership
       const newPaidAmount = Number(transfer.order.paidAmount) + totalPaid;
       const isFullyPaid = newPaidAmount >= Number(transfer.order.totalAmount) - 0.01;
       await tx.order.update({
@@ -105,8 +118,14 @@ export async function POST(req: Request) {
         },
       });
 
+      // Regenerate ticket numbers so original QR codes are invalidated
       for (const ticket of transfer.order.tickets) {
-        await tx.ticket.update({ where: { id: ticket.id }, data: { currentOwnerId: toUserId } });
+        const newNumber = generateTicketNumber(prefix);
+        newTicketNumbers.push(newNumber);
+        await tx.ticket.update({
+          where: { id: ticket.id },
+          data: { currentOwnerId: toUserId, ticketNumber: newNumber, qrCode: null },
+        });
       }
 
       await tx.ticketTransfer.update({
@@ -124,6 +143,29 @@ export async function POST(req: Request) {
         data: { status: "success" },
       });
     });
+
+    // Send new ticket to the recipient
+    if (newTicketNumbers.length > 0) {
+      try {
+        const newOwner = await db.user.findUnique({
+          where: { id: toUserId },
+          select: { email: true, name: true },
+        });
+        if (newOwner?.email) {
+          await sendTicketConfirmation({
+            to: newOwner.email,
+            name: newOwner.name ?? "there",
+            eventTitle: transferEventTitle,
+            categoryName: transferCategoryName,
+            ticketNumbers: newTicketNumbers,
+            eventDate: transferEventDate,
+            venue: transferVenue,
+          });
+        }
+      } catch (err) {
+        console.error("[webhook] transfer ticket email threw:", err);
+      }
+    }
 
     return NextResponse.json({ received: true });
   }

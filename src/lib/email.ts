@@ -1534,3 +1534,54 @@ export async function sendGroupTripExpansionRejectedNotice({
     html: shell({ preheader: `Update on your expansion request`, headline: "Expansion request declined", label: "Group trip", accentColor: "#ef4444", body }),
   });
 }
+
+// ─── Disbursement request ─────────────────────────────────────────────────────
+
+export async function sendDisbursementRequestNotice({
+  sellerName,
+  sellerEmail,
+  outstanding,
+  earned,
+  paidOut,
+  payoutMethod,
+}: {
+  sellerName: string;
+  sellerEmail: string;
+  outstanding: number;
+  earned: number;
+  paidOut: number;
+  payoutMethod: { bankName: string; accountNumber: string; bankType: string; label: string | null };
+}) {
+  const adminUrl = `${APP_URL}/admin/payouts`;
+  const accountDisplay =
+    payoutMethod.bankType === "mobile_money" || payoutMethod.bankType === "mobile_money_business"
+      ? payoutMethod.accountNumber
+      : `···· ${payoutMethod.accountNumber.slice(-4)}`;
+
+  const body = `
+    <p style="margin:0 0 16px;">A seller has requested a disbursement of their outstanding earnings.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+      <tr><td style="padding:8px 0;color:#64748b;width:160px;">Seller</td><td style="padding:8px 0;color:#0f172a;">${sellerName} (<a href="mailto:${sellerEmail}" style="color:#0f9699;">${sellerEmail}</a>)</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Total earned</td><td style="padding:8px 0;color:#0f172a;">KES ${earned.toLocaleString()}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Previously paid</td><td style="padding:8px 0;color:#0f172a;">KES ${paidOut.toLocaleString()}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Outstanding</td><td style="padding:8px 0;font-weight:700;color:#dc2626;">KES ${outstanding.toLocaleString()}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Payout to</td><td style="padding:8px 0;color:#0f172a;">${payoutMethod.bankName} · ${accountDisplay}${payoutMethod.label ? ` (${payoutMethod.label})` : ""}</td></tr>
+    </table>
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-weight:700;color:#92400e;">Action required</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#78350f;">
+        Process a disbursement of <strong>KES ${outstanding.toLocaleString()}</strong> to ${sellerName} via ${payoutMethod.bankName}.
+        Review the seller's payout method before processing.
+      </p>
+    </div>
+    <div style="text-align:center;">
+      <a href="${adminUrl}" style="display:inline-block;background:#0f9699;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">Process disbursement</a>
+    </div>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to: ADMIN_EMAIL,
+    subject: `[Disbursement request] ${sellerName} — KES ${outstanding.toLocaleString()}`,
+    html: shell({ preheader: `Disbursement request from ${sellerName}`, headline: "Disbursement requested", label: "Admin", accentColor: "#f59e0b", body }),
+  });
+}
