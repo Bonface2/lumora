@@ -1,0 +1,19 @@
+name: Lumora CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Server Deployment Engine
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: lumora
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/lumora/app
+            bash deploy.sh

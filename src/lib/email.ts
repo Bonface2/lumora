@@ -1213,7 +1213,7 @@ export async function sendPasswordResetEmail({
 
 // ─── Group trip emails ────────────────────────────────────────────────────────
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? process.env.EMAIL_FROM ?? "admin@lumora.app";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? process.env.EMAIL_FROM ?? "admin@lumora.co.ke";
 const APP_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
 export async function sendGroupTripPendingNotice({
@@ -1433,7 +1433,7 @@ export async function sendGroupTripCancellationSellerNotice({
       The net amount — after deducting accrued platform fees — will be disbursed to your registered account within <strong style="color:#0f172a;">5–10 business days</strong>.
       Our team has been notified and will process this shortly.
     </p>
-    <p style="margin:0;color:#94a3b8;font-size:13px;">If you have questions, please reach out at <a href="mailto:hello@lumora.co" style="color:#0f9699;">hello@lumora.co</a>.</p>`;
+    <p style="margin:0;color:#94a3b8;font-size:13px;">If you have questions, please reach out at <a href="mailto:hello@lumora.co.ke" style="color:#0f9699;">hello@lumora.co.ke</a>.</p>`;
 
   await send({
     from: FROM_EMAIL,
