@@ -21,3 +21,6 @@ dist/
 # Misc
 .DS_Store
 *.log
+
+# Server-only scripts
+deploy.sh
