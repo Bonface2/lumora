@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lumora_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lumora
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: lumora
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - lumora_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: lumora_cache
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    networks:
+      - lumora_net
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lumora_web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3099:3099"
+    env_file:
+      - .env.production
+    environment:
+      - DATABASE_URL=postgresql://lumora:${DB_PASSWORD}@postgres:5432/lumora
+      - DIRECT_URL=postgresql://lumora:${DB_PASSWORD}@postgres:5432/lumora
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - lumora_net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lumora_worker
+    restart: unless-stopped
+    command: ["node", "worker.js"]
+    env_file:
+      - .env.production
+    environment:
+      - DATABASE_URL=postgresql://lumora:${DB_PASSWORD}@postgres:5432/lumora
+      - DIRECT_URL=postgresql://lumora:${DB_PASSWORD}@postgres:5432/lumora
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - lumora_net
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  lumora_net:
+    driver: bridge
