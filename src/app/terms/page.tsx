@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Footer } from "@/components/layouts/Footer";
 import { getPlatformConfig } from "@/lib/platformConfig";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Terms of Service" };
 
 const LAST_UPDATED = "11 May 2026";
