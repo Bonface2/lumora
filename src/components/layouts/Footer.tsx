@@ -34,7 +34,7 @@ export function Footer() {
           </div>
 
           {/* Link columns — anchored right on desktop, left on mobile */}
-          <div className="flex gap-12 sm:gap-16">
+          <div className="grid grid-cols-2 gap-y-6 md:flex md:gap-16">
             {LINKS.map((col) => (
               <div key={col.heading}>
                 <p className="mb-4 text-xs font-bold uppercase tracking-widest text-primary-400">
