@@ -22,7 +22,7 @@ export function Footer() {
     <footer className="border-t border-white/10 bg-gray-950 px-6 pt-14 pb-8 md:px-10">
       <div className="mx-auto max-w-6xl">
         {/* Top row */}
-        <div className="flex flex-col gap-10 sm:flex-row sm:justify-between">
+        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           {/* Brand — anchored left */}
           <div className="max-w-xs">
             <Link href="/" className="flex items-center">
@@ -33,8 +33,8 @@ export function Footer() {
             </p>
           </div>
 
-          {/* Link columns — anchored right */}
-          <div className="flex gap-16">
+          {/* Link columns — anchored right on desktop, left on mobile */}
+          <div className="flex gap-12 sm:gap-16">
             {LINKS.map((col) => (
               <div key={col.heading}>
                 <p className="mb-4 text-xs font-bold uppercase tracking-widest text-primary-400">

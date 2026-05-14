@@ -33,16 +33,16 @@ export function CookieBanner() {
             Privacy Policy
           </Link>
         </p>
-        <div className="flex shrink-0 gap-3">
+        <div className="flex w-full gap-3 sm:w-auto sm:shrink-0">
           <button
             onClick={decline}
-            className="rounded-xl border border-white/20 px-5 py-2 text-sm font-semibold text-gray-400 hover:text-white transition-colors"
+            className="flex-1 sm:flex-none rounded-xl border border-white/20 px-5 py-2 text-sm font-semibold text-gray-400 hover:text-white transition-colors"
           >
             Decline
           </button>
           <button
             onClick={accept}
-            className="rounded-xl bg-primary-600 px-5 py-2 text-sm font-bold text-white hover:bg-primary-500 transition-colors"
+            className="flex-1 sm:flex-none rounded-xl bg-primary-600 px-5 py-2 text-sm font-bold text-white hover:bg-primary-500 transition-colors"
           >
             Accept all
           </button>
