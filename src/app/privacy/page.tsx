@@ -47,7 +47,7 @@ export default function PrivacyPage() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         <Link href="/" className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
+          <img src="/logo-light.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
           <span className="text-lg font-black tracking-tight text-gray-900">Lumora</span>
         </Link>
         <div className="hidden items-center gap-6 md:flex">

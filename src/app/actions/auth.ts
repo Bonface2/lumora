@@ -82,8 +82,8 @@ export async function requestPasswordReset(
     select: { id: true, name: true, password: true },
   });
 
-  // Always return ok to prevent email enumeration
-  if (!user || !user.password) return { ok: true, data: null };
+  if (!user) return { ok: true, data: null }; // prevent email enumeration
+  if (!user.password) return { ok: false, error: "GOOGLE_ACCOUNT" };
 
   // Invalidate any existing unused tokens for this user
   await db.passwordResetToken.updateMany({

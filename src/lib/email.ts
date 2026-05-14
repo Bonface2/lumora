@@ -1597,7 +1597,7 @@ export async function sendContactFormMessage({
   subject: string;
   message: string;
 }) {
-  const SUPPORT_EMAIL = process.env.ADMIN_EMAIL ?? "support@lumora.co.ke";
+  const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? "support@lumora.co.ke";
 
   const body = `
     <p style="margin:0 0 16px;color:#475569;font-size:14px;">A new message was submitted via the contact form on lumora.co.ke.</p>

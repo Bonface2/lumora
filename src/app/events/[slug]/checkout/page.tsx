@@ -249,7 +249,7 @@ function CheckoutContent() {
           />
           <div className="absolute inset-x-0 top-0 flex items-center justify-between px-8 py-6 md:px-10">
             <Link href="/" className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
+              <img src="/logo-light.svg" alt="Lumora" className="h-8 w-8 rounded-lg object-cover" />
               <span className="text-base font-black tracking-tight text-white drop-shadow">Lumora</span>
             </Link>
             <Link

@@ -13,15 +13,21 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) { setError("Enter your email address."); return; }
     setLoading(true);
     setError("");
+    setIsGoogleAccount(false);
     const res = await requestPasswordReset(email.trim());
     setLoading(false);
-    if (!res.ok) { setError(res.error); return; }
+    if (!res.ok) {
+      if (res.error === "GOOGLE_ACCOUNT") { setIsGoogleAccount(true); return; }
+      setError(res.error);
+      return;
+    }
     setSent(true);
   }
 
@@ -51,6 +57,16 @@ export default function ForgotPasswordPage() {
             <p className="mb-6 text-sm text-gray-500">
               Enter your email and we&apos;ll send you a reset link.
             </p>
+
+            {isGoogleAccount && (
+              <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                This account was created with Google. Use the{" "}
+                <Link href="/login" className="font-semibold underline underline-offset-2">
+                  Continue with Google
+                </Link>{" "}
+                button to sign in — no password needed.
+              </div>
+            )}
 
             {error && (
               <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
