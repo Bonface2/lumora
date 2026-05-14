@@ -119,7 +119,7 @@ export default async function TermsPage() {
         </Section>
 
         <Section number="03" title="Accounts">
-          <p>You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. Notify us immediately at <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a> if you suspect unauthorised access.</p>
+          <p>You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. Notify us immediately at <a href="mailto:support@lumora.co.ke" className="font-medium text-primary-600 hover:underline">support@lumora.co.ke</a> if you suspect unauthorised access.</p>
         </Section>
 
         <Section number="04" title="Ticket Purchases">
@@ -427,7 +427,7 @@ export default async function TermsPage() {
         <Section number="17" title="Contact">
           <p>
             Questions about these Terms? Reach us at{" "}
-            <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a>{" "}
+            <a href="mailto:support@lumora.co.ke" className="font-medium text-primary-600 hover:underline">support@lumora.co.ke</a>{" "}
             or visit our{" "}
             <Link href="/contact" className="font-medium text-primary-600 hover:underline">Contact page</Link>.
           </p>

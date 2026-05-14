@@ -1433,7 +1433,7 @@ export async function sendGroupTripCancellationSellerNotice({
       The net amount — after deducting accrued platform fees — will be disbursed to your registered account within <strong style="color:#0f172a;">5–10 business days</strong>.
       Our team has been notified and will process this shortly.
     </p>
-    <p style="margin:0;color:#94a3b8;font-size:13px;">If you have questions, please reach out at <a href="mailto:hello@lumora.co.ke" style="color:#0f9699;">hello@lumora.co.ke</a>.</p>`;
+    <p style="margin:0;color:#94a3b8;font-size:13px;">If you have questions, please reach out at <a href="mailto:support@lumora.co.ke" style="color:#0f9699;">support@lumora.co.ke</a>.</p>`;
 
   await send({
     from: FROM_EMAIL,
@@ -1583,5 +1583,38 @@ export async function sendDisbursementRequestNotice({
     to: ADMIN_EMAIL,
     subject: `[Disbursement request] ${sellerName} — KES ${outstanding.toLocaleString()}`,
     html: shell({ preheader: `Disbursement request from ${sellerName}`, headline: "Disbursement requested", label: "Admin", accentColor: "#f59e0b", body }),
+  });
+}
+
+export async function sendContactFormMessage({
+  name,
+  email,
+  subject,
+  message,
+}: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) {
+  const SUPPORT_EMAIL = process.env.ADMIN_EMAIL ?? "support@lumora.co.ke";
+
+  const body = `
+    <p style="margin:0 0 16px;color:#475569;font-size:14px;">A new message was submitted via the contact form on lumora.co.ke.</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px;">
+      <tr><td style="padding:8px 0;color:#64748b;width:100px;">From</td><td style="padding:8px 0;color:#0f172a;">${name} (<a href="mailto:${email}" style="color:#0f9699;">${email}</a>)</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">Subject</td><td style="padding:8px 0;color:#0f172a;">${subject}</td></tr>
+    </table>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <p style="margin:0;font-size:14px;color:#0f172a;white-space:pre-wrap;">${message}</p>
+    </div>
+    <p style="margin:0;color:#94a3b8;font-size:13px;">Reply directly to this email to respond to ${name}.</p>`;
+
+  await send({
+    from: FROM_EMAIL,
+    to: SUPPORT_EMAIL,
+    replyTo: email,
+    subject: `[Contact] ${subject}`,
+    html: shell({ preheader: `New message from ${name}: ${subject}`, headline: "New contact message", label: "Support", body }),
   });
 }

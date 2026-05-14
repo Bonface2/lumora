@@ -89,7 +89,7 @@ export default function PrivacyPage() {
         <Section number="01" title="Who We Are">
           <p>
             Lumora is an online event ticketing and experience platform. For the purposes of data protection law, Lumora is the data controller of personal information collected through this Platform. You can contact us at{" "}
-            <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a>.
+            <a href="mailto:support@lumora.co.ke" className="font-medium text-primary-600 hover:underline">support@lumora.co.ke</a>.
           </p>
         </Section>
 
@@ -171,7 +171,7 @@ export default function PrivacyPage() {
           </ul>
           <p className="mt-1">
             To exercise any of these rights, email{" "}
-            <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a>.
+            <a href="mailto:support@lumora.co.ke" className="font-medium text-primary-600 hover:underline">support@lumora.co.ke</a>.
             {" "}We will respond within 30 days.
           </p>
         </Section>
@@ -191,7 +191,7 @@ export default function PrivacyPage() {
         <Section number="12" title="Contact Us">
           <p>
             For privacy enquiries, contact us at{" "}
-            <a href="mailto:hello@lumora.co" className="font-medium text-primary-600 hover:underline">hello@lumora.co</a>{" "}
+            <a href="mailto:support@lumora.co.ke" className="font-medium text-primary-600 hover:underline">support@lumora.co.ke</a>{" "}
             or visit our{" "}
             <Link href="/contact" className="font-medium text-primary-600 hover:underline">Contact page</Link>.
           </p>

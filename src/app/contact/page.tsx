@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer } from "@/components/layouts/Footer";
+import { ContactForm } from "./ContactForm";
 
 export const metadata: Metadata = { title: "Contact Us" };
 
@@ -53,10 +54,10 @@ export default function ContactPage() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Email</p>
                 <a
-                  href="mailto:hello@lumora.co"
+                  href="mailto:support@lumora.co.ke"
                   className="mt-0.5 block text-base font-bold text-primary-600 hover:text-primary-700 transition-colors"
                 >
-                  hello@lumora.co
+                  support@lumora.co.ke
                 </a>
                 <p className="mt-1 text-xs text-gray-500">General enquiries &amp; support</p>
               </div>
@@ -72,10 +73,10 @@ export default function ContactPage() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</p>
                 <a
-                  href="tel:+254700000000"
+                  href="tel:+254701536040"
                   className="mt-0.5 block text-base font-bold text-primary-600 hover:text-primary-700 transition-colors"
                 >
-                  +254 700 000 000
+                  +254 701 536 040
                 </a>
                 <p className="mt-1 text-xs text-gray-500">Mon – Fri, 9 am – 6 pm EAT</p>
               </div>
@@ -107,78 +108,7 @@ export default function ContactPage() {
           </div>
 
           {/* Right — contact form */}
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-8">
-            <h2 className="text-xl font-black tracking-tight text-gray-900 mb-6">Send us a message</h2>
-            <form
-              action="mailto:hello@lumora.co"
-              method="POST"
-              encType="text/plain"
-              className="space-y-4"
-            >
-              <div>
-                <label htmlFor="name" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-500">
-                  Your name
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  placeholder="Jane Doe"
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-500">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="jane@example.com"
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="subject" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-500">
-                  Subject
-                </label>
-                <input
-                  id="subject"
-                  name="subject"
-                  type="text"
-                  required
-                  placeholder="e.g. Ticket refund request"
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="message" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-500">
-                  Message
-                </label>
-                <textarea
-                  id="message"
-                  name="message"
-                  required
-                  rows={5}
-                  placeholder="Tell us how we can help..."
-                  className="w-full resize-none rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-primary-600 px-6 py-3.5 text-sm font-bold tracking-wide text-white hover:bg-primary-700 transition-colors"
-              >
-                Send message
-              </button>
-            </form>
-          </div>
+          <ContactForm />
         </div>
       </section>
 
