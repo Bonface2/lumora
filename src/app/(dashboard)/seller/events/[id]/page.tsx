@@ -586,9 +586,17 @@ export default async function SellerEventDetailPage({
                           )}
                         </td>
                         <td className="px-5 py-4">
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusCls}`}>
-                            {statusLabel}
-                          </span>
+                          {order.status === "REVOKED" ? (
+                            <ReinstateButton
+                              orderId={order.id}
+                              buyerName={order.buyer.name ?? order.buyer.email}
+                              action={sellerReinstateOrder}
+                            />
+                          ) : (
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusCls}`}>
+                              {statusLabel}
+                            </span>
+                          )}
                         </td>
                         {event.isPrivate && (
                           <td className="px-5 py-4">
@@ -606,13 +614,7 @@ export default async function SellerEventDetailPage({
                           </td>
                         )}
                         <td className="px-5 py-4 text-right">
-                          {order.status === "REVOKED" ? (
-                            <ReinstateButton
-                              orderId={order.id}
-                              buyerName={order.buyer.name ?? order.buyer.email}
-                              action={sellerReinstateOrder}
-                            />
-                          ) : order.status !== "CANCELLED" ? (
+                          {order.status !== "REVOKED" && order.status !== "CANCELLED" ? (
                             <RevokeButton orderId={order.id} buyerName={order.buyer.name ?? order.buyer.email} />
                           ) : null}
                         </td>

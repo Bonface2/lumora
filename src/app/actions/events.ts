@@ -604,7 +604,11 @@ export async function sellerReinstateOrder(
   await db.$transaction([
     db.ticket.updateMany({ where: { orderId }, data: { status: "ACTIVE" } }),
     db.installmentPayment.updateMany({
-      where: { orderId, status: "DEFAULTED" },
+      where: { orderId, status: { in: ["DEFAULTED", "OVERDUE"] }, dueDate: { gte: new Date() } },
+      data: { status: "PENDING" },
+    }),
+    db.installmentPayment.updateMany({
+      where: { orderId, status: "DEFAULTED", dueDate: { lt: new Date() } },
       data: { status: "OVERDUE" },
     }),
     db.order.update({

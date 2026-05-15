@@ -75,7 +75,7 @@ export default async function CallbackPage({
           <span className="font-medium">{event.title}</span>
         </p>
       )}
-      {tickets.length > 0 && (
+      {isFullyPaid && tickets.length > 0 && (
         <div className="mt-4 w-full max-w-xs space-y-2">
           {tickets.map((t) => (
             <div key={t.id} className="rounded-xl border border-gray-200 bg-white px-8 py-4 shadow-sm">
@@ -86,6 +86,11 @@ export default async function CallbackPage({
             </div>
           ))}
         </div>
+      )}
+      {isFullyPaid && (
+        <p className="mt-4 max-w-sm text-sm text-emerald-700 bg-emerald-50 rounded-lg px-4 py-3">
+          Payment complete — your ticket is fully paid and confirmed.
+        </p>
       )}
       {isDeposit && (
         <p className="mt-4 max-w-sm text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-3">

@@ -234,9 +234,9 @@ export async function getDisbursementData(): Promise<ApiResponse<DisbursementDat
 
   const [orders, payoutRecords, payoutMethods, platformConfig] = await Promise.all([
     db.order.findMany({
-      where: { status: "PAID_IN_FULL", ticketCategory: { event: { sellerId } } },
+      where: { status: { in: ["PAID_IN_FULL", "PARTIAL_PAID"] }, ticketCategory: { event: { sellerId } } },
       select: {
-        totalAmount: true,
+        paidAmount: true,
         ticketCategory: {
           select: {
             event: {
@@ -270,7 +270,7 @@ export async function getDisbursementData(): Promise<ApiResponse<DisbursementDat
 
   for (const order of orders) {
     const ev = order.ticketCategory.event;
-    const orderGross = Number(order.totalAmount);
+    const orderGross = Number(order.paidAmount);
     const { sellerNet, platformFee } = computeSellerNet(
       orderGross,
       ev.eventType,

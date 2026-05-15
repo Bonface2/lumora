@@ -1,7 +1,5 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unstable_cache } from "next/cache";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Footer } from "@/components/layouts/Footer";
@@ -24,12 +22,6 @@ const getCachedHomeEvents = unstable_cache(
 );
 
 export default async function HomePage() {
-  const session = await auth();
-
-  if (session?.user) {
-    redirect(session.user.role === "SELLER" ? "/seller" : session.user.role === "ADMIN" ? "/admin" : "/buyer");
-  }
-
   const events = await getCachedHomeEvents();
 
   return (
@@ -112,7 +104,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Event grid ── */}
-      <section className="mx-auto max-w-6xl px-6 py-16 md:px-10">
+      <section className="mx-auto max-w-7xl px-6 py-16 md:px-10">
         <div className="mb-10 flex items-end justify-between">
           <div>
             <h2 className="text-2xl font-black tracking-tight text-gray-900">Upcoming experiences</h2>
@@ -148,8 +140,8 @@ export default async function HomePage() {
                   href={`/events/${event.slug}`}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
                 >
-                  {/* Cover image — 3:4 ratio */}
-                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-primary-100">
+                  {/* Cover image — 4:5 ratio */}
+                  <div className="relative aspect-[4/5] w-full overflow-hidden bg-primary-100">
                     {event.coverImage ? (
                       <img
                         src={event.coverImage}

@@ -280,7 +280,7 @@ export default async function BuyerTicketsPage({
               const totalAmount = Number(order.totalAmount);
               const progress = totalAmount > 0 ? Math.min(100, (paidAmount / totalAmount) * 100) : 0;
               const pendingPayments = order.payments.filter(
-                (p) => p.paymentNumber > 0 && p.status === "PENDING"
+                (p) => p.paymentNumber > 0 && (p.status === "PENDING" || p.status === "OVERDUE")
               );
               const nextPayment = pendingPayments[0];
               const nextDue = nextPayment
@@ -353,17 +353,21 @@ export default async function BuyerTicketsPage({
                           />
                         </div>
 
-                        {nextPayment && order.status === "PARTIAL_PAID" && (
+                        {order.status === "PARTIAL_PAID" && (
                           <div className="mt-3 flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Next due</p>
-                              <p className="text-sm font-bold text-gray-900">
-                                KES {nextDue.toLocaleString()}
-                                <span className="ml-1 text-[10px] font-normal text-gray-500">
-                                  {format(nextPayment.dueDate, "dd MMM")}
-                                </span>
-                              </p>
-                            </div>
+                            {nextPayment ? (
+                              <div>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Next due</p>
+                                <p className="text-sm font-bold text-gray-900">
+                                  KES {nextDue.toLocaleString()}
+                                  <span className="ml-1 text-[10px] font-normal text-gray-500">
+                                    {format(nextPayment.dueDate, "dd MMM")}
+                                  </span>
+                                </p>
+                              </div>
+                            ) : (
+                              <div />
+                            )}
                             <Link
                               href={`/buyer/orders/${order.id}/pay`}
                               className="shrink-0 rounded-xl bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700 transition-colors"
@@ -376,7 +380,22 @@ export default async function BuyerTicketsPage({
                         {(() => {
                           const grace = order.ticketCategory.installmentPlan?.gracePeriodDays ?? 7;
                           const rev = calcRevocation(grace, order.payments, order.status, now);
-                          if (rev.level === "none") return null;
+
+                          if (rev.level === "none") {
+                            if (!nextPayment || order.status !== "PARTIAL_PAID") return null;
+                            const daysToNext = Math.ceil((new Date(nextPayment.dueDate).getTime() - now.getTime()) / MS_PER_DAY);
+                            if (daysToNext <= 0) return null;
+                            const label = daysToNext === 1
+                              ? "Next installment due tomorrow."
+                              : `${daysToNext} days to next installment.`;
+                            return (
+                              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-2 text-xs font-semibold text-primary-700">
+                                <span className="shrink-0">📅</span>
+                                <span>{label}</span>
+                              </p>
+                            );
+                          }
+
                           const styles = {
                             terminal: "bg-gray-100 text-gray-600 border-gray-300",
                             critical: "bg-red-50 text-red-700 border-red-300",

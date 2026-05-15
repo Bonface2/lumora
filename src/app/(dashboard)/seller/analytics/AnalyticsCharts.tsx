@@ -29,6 +29,7 @@ interface Props {
   eventStats: EventStat[];
   grandRevenue: number;
   grandCollected: number;
+  grandOutstanding: number;
   grandSold: number;
   grandAvailable: number;
   categoryStats: CategoryStat[];
@@ -59,6 +60,7 @@ export function AnalyticsCharts({
   eventStats,
   grandRevenue,
   grandCollected,
+  grandOutstanding,
   grandSold,
   grandAvailable,
   categoryStats,
@@ -78,7 +80,7 @@ export function AnalyticsCharts({
   /* Donut — revenue */
   const revenueDonut = [
     { name: "Collected",   value: grandCollected },
-    { name: "Outstanding", value: Math.max(0, grandRevenue - grandCollected) },
+    { name: "Outstanding", value: grandOutstanding },
   ];
 
   /* Donut — default rate */
@@ -137,7 +139,7 @@ export function AnalyticsCharts({
         {[
           { label: "Total revenue",    value: `KES ${grandRevenue.toLocaleString()}`,   sub: "at full price",       color: "text-gray-900" },
           { label: "Collected",        value: `KES ${grandCollected.toLocaleString()}`, sub: "payments received",   color: "text-primary-600" },
-          { label: "Outstanding",      value: `KES ${(grandRevenue - grandCollected).toLocaleString()}`, sub: "pending", color: "text-amber-500" },
+          { label: "Outstanding",      value: `KES ${grandOutstanding.toLocaleString()}`, sub: "remaining on active installments", color: "text-amber-500" },
           { label: "Collection rate",  value: `${collectionPct}%`,                      sub: "of expected",         color: collectionPct >= 80 ? "text-emerald-600" : "text-amber-500" },
         ].map((s) => (
           <div key={s.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -209,7 +211,7 @@ export function AnalyticsCharts({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: AMBER }} />
-                  <span className="text-gray-600">Outstanding <strong>KES {Math.max(0, grandRevenue - grandCollected).toLocaleString()}</strong></span>
+                  <span className="text-gray-600">Outstanding <strong>KES {grandOutstanding.toLocaleString()}</strong></span>
                 </div>
               </div>
             </div>

@@ -10,7 +10,13 @@ function isOverdue(
   order: { status: string; payments: { paymentNumber: number; dueDate: Date; status: string }[] },
   now: Date
 ) {
-  if (order.status === "DEFAULTED" || order.status === "REVOKED") return true;
+  if (order.status === "DEFAULTED") return true;
+  if (order.status === "REVOKED") {
+    // Only count as defaulted if a payment was actually marked overdue/defaulted (auto-revoked)
+    return order.payments.some(
+      (p) => p.paymentNumber > 0 && (p.status === "OVERDUE" || p.status === "DEFAULTED")
+    );
+  }
   if (order.status !== "PARTIAL_PAID") return false;
   return order.payments.some(
     (p) => p.paymentNumber > 0 && p.dueDate < now && (p.status === "PENDING" || p.status === "OVERDUE" || p.status === "DEFAULTED")
@@ -82,6 +88,8 @@ export default async function AnalyticsPage({
     let evSold = 0;
     const evAvailable = event.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
 
+    let evOutstanding = 0;
+
     for (const cat of event.ticketCategories) {
       evSold += cat.soldQuantity;
       evRevenue += Number(cat.price) * cat.soldQuantity;
@@ -97,6 +105,9 @@ export default async function AnalyticsPage({
         catCollected += Number(order.paidAmount);
         if (isOverdue(order, now)) catDefaulted++;
         if (order.status === "REVOKED") catRevoked++;
+        if (order.status === "PARTIAL_PAID") {
+          evOutstanding += Math.max(0, Number(order.totalAmount) - Number(order.paidAmount));
+        }
       }
 
       evCollected += catCollected;
@@ -125,12 +136,13 @@ export default async function AnalyticsPage({
       name: event.title,
       revenue: evRevenue,
       collected: evCollected,
-      outstanding: Math.max(0, evRevenue - evCollected),
+      outstanding: evOutstanding,
       sold: evSold,
       available: evAvailable,
     });
   }
 
+  const grandOutstanding = eventStats.reduce((s, e) => s + e.outstanding, 0);
   const grandDefaulted = categoryStats.reduce((s, c) => s + c.defaulted, 0);
   const grandDefaultRate =
     grandTotalOrders > 0 ? Math.round((grandDefaulted / grandTotalOrders) * 100) : 0;
@@ -306,6 +318,7 @@ export default async function AnalyticsPage({
             eventStats={eventStats}
             grandRevenue={grandRevenue}
             grandCollected={grandCollected}
+            grandOutstanding={grandOutstanding}
             grandSold={grandSold}
             grandAvailable={grandAvailable}
             categoryStats={categoryStats}

@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
 import { unstable_cache } from "next/cache";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -23,11 +22,7 @@ const getCachedEvents = unstable_cache(
 );
 
 export default async function EventsPage() {
-  const session = await auth();
-
   const events = await getCachedEvents();
-
-  const dashboardHref = session?.user?.role === "SELLER" ? "/seller" : "/buyer";
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -37,16 +32,7 @@ export default async function EventsPage() {
           <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
         </Link>
 
-        {session?.user ? (
-          <NavUserSidebar user={session.user} dashboardHref={dashboardHref!} />
-        ) : (
-          <Link
-            href="/login"
-            className="rounded-xl bg-primary-600 px-5 py-2 text-sm font-bold tracking-wide text-white hover:bg-primary-700 transition-colors"
-          >
-            Log in
-          </Link>
-        )}
+        <NavUserSidebar />
       </nav>
 
       {/* Hero header */}
@@ -73,7 +59,7 @@ export default async function EventsPage() {
       </section>
 
       {/* Grid */}
-      <div className="mx-auto max-w-6xl px-6 py-10 md:px-10">
+      <div className="mx-auto max-w-7xl px-6 py-10 md:px-10">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-24 text-center">
             <p className="text-lg font-bold text-gray-900">Nothing listed yet</p>
@@ -97,7 +83,7 @@ export default async function EventsPage() {
                   className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
                 >
                   {/* Cover image — 3:4 ratio */}
-                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-primary-100">
+                  <div className="relative aspect-[4/5] w-full overflow-hidden bg-primary-100">
                     {event.coverImage ? (
                       <img
                         src={event.coverImage}

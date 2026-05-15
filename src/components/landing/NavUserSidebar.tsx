@@ -2,16 +2,28 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
-interface Props {
-  user: { name?: string | null; email?: string | null; role?: string | null };
-  dashboardHref: string;
-}
-
-export function NavUserSidebar({ user, dashboardHref }: Props) {
+export function NavUserSidebar() {
+  const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  if (status === "loading") return null;
+
+  if (!session?.user) {
+    return (
+      <Link
+        href="/login"
+        className="rounded-xl bg-primary-600 px-5 py-2 text-sm font-bold tracking-wide text-white hover:bg-primary-700 transition-colors"
+      >
+        Log in
+      </Link>
+    );
+  }
+
+  const user = session.user;
+  const dashboardHref = user.role === "SELLER" ? "/seller" : user.role === "ADMIN" ? "/admin" : "/buyer";
 
   const initials = user.name
     ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
