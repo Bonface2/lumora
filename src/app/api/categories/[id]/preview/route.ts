@@ -45,7 +45,13 @@ export async function GET(
     installmentPlan: plan
       ? {
           initialPaymentPercent: effectiveInitialPercent,
+          depositPercent: Number(plan.initialPaymentPercent),
           consolidatedCount: pastDueItems.length,
+          consolidatedItems: pastDueItems.map((s) => ({
+            installmentNumber: s.installmentNumber,
+            percentage: Number(s.percentage),
+            dueDate: s.dueDate.toISOString(),
+          })),
           scheduleItems: futureItems.map((s) => ({
             installmentNumber: s.installmentNumber,
             percentage: Number(s.percentage),

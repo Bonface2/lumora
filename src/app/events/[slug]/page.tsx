@@ -74,7 +74,7 @@ export default async function PublicEventPage({
       {/* ── Sticky nav ── */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
+          <img src="/logo.svg" alt="Lumora" className="h-16 w-auto object-contain" />
         </Link>
 
         <div className="flex items-center gap-3">

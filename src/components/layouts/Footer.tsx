@@ -22,19 +22,19 @@ export function Footer() {
     <footer className="border-t border-white/10 bg-gray-950 px-6 pt-14 pb-8 md:px-10">
       <div className="mx-auto max-w-6xl">
         {/* Top row */}
-        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
-          {/* Brand — anchored left */}
-          <div className="max-w-xs">
-            <Link href="/" className="flex items-center">
-              <span className="text-2xl font-bold tracking-wide text-white" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
+        <div className="flex flex-col items-center gap-10 md:flex-row md:items-start md:justify-between">
+          {/* Brand */}
+          <div className="max-w-xs text-center md:text-left">
+            <Link href="/" className="flex items-center justify-center md:justify-start">
+              <img src="/logo.svg" alt="Lumora" className="h-10 w-auto object-contain" />
             </Link>
             <p className="mt-3 text-sm leading-relaxed text-gray-400">
               Every experience worth having — buy tickets or spread the cost with installments.
             </p>
           </div>
 
-          {/* Link columns — anchored right on desktop, left on mobile */}
-          <div className="grid grid-cols-2 gap-y-6 md:flex md:gap-16">
+          {/* Link columns */}
+          <div className="grid grid-cols-2 gap-y-6 text-center md:flex md:gap-16 md:text-left">
             {LINKS.map((col) => (
               <div key={col.heading}>
                 <p className="mb-4 text-xs font-bold uppercase tracking-widest text-primary-400">

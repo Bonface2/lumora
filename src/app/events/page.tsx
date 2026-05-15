@@ -1,35 +1,30 @@
 import { db } from "@/lib/db";
-import { unstable_cache } from "next/cache";
 import { format } from "date-fns";
 import Link from "next/link";
 import { NavUserSidebar } from "@/components/landing/NavUserSidebar";
 import { Footer } from "@/components/layouts/Footer";
 
-const getCachedEvents = unstable_cache(
-  () =>
-    db.event.findMany({
-      where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
-      include: {
-        ticketCategories: {
-          select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
-          orderBy: { price: "asc" },
-        },
-      },
-      orderBy: { date: "asc" },
-    }),
-  ["all-events"],
-  { revalidate: 60 }
-);
+export const revalidate = 60;
 
 export default async function EventsPage() {
-  const events = await getCachedEvents();
+  const events = await db.event.findMany({
+    where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
+    include: {
+      ticketCategories: {
+        where: { isComplimentary: false },
+        select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
+        orderBy: { price: "asc" },
+      },
+    },
+    orderBy: { date: "asc" },
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         <Link href="/" className="flex items-center">
-          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
+          <img src="/logo.svg" alt="Lumora" className="h-16 w-auto object-contain" />
         </Link>
 
         <NavUserSidebar />

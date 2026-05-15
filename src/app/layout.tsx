@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { CookieBanner } from "@/components/CookieBanner";
-import { Montserrat, Cormorant_Garamond } from "next/font/google";
+import { Montserrat, Cormorant_Garamond, Rajdhani } from "next/font/google";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -18,6 +18,13 @@ const cormorant = Cormorant_Garamond({
   display: "swap",
 });
 
+const rajdhani = Rajdhani({
+  subsets: ["latin"],
+  variable: "--font-rajdhani",
+  weight: ["500", "600"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: {
     default: "Lumora — Events & Ticketing",
@@ -25,6 +32,10 @@ export const metadata: Metadata = {
   },
   description:
     "Discover and buy tickets for the best events. Flexible installment payments available.",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
@@ -34,7 +45,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${montserrat.variable} ${cormorant.variable} antialiased`}>
+      <body className={`${montserrat.variable} ${cormorant.variable} ${rajdhani.variable} antialiased`}>
         <Providers>{children}</Providers>
         <CookieBanner />
       </body>

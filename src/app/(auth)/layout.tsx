@@ -4,7 +4,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <a href="/" className="inline-flex items-center gap-2">
-            <span className="text-3xl font-bold text-primary-600">Lumora</span>
+            <img src="/logo-light.svg" alt="Lumora" className="h-24 w-auto object-contain" />
           </a>
           <p className="mt-1 text-sm text-gray-500">Events &amp; Ticketing</p>
         </div>

@@ -20,7 +20,9 @@ interface CategoryPreview {
   allowInstallments: boolean;
   installmentPlan: {
     initialPaymentPercent: number;
+    depositPercent: number;
     consolidatedCount: number;
+    consolidatedItems: { installmentNumber: number; percentage: number; dueDate: string }[];
     scheduleItems: { installmentNumber: number; percentage: number; dueDate: string }[];
   } | null;
 }
@@ -374,29 +376,59 @@ function CheckoutContent() {
                       <p className="text-xs font-bold uppercase tracking-wider text-primary-600">
                         Installment schedule
                       </p>
+
+                      {/* Late purchase notice */}
                       {singleCategory!.installmentPlan.consolidatedCount > 0 && (
-                        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                          {singleCategory!.installmentPlan.consolidatedCount} overdue installment
-                          {singleCategory!.installmentPlan.consolidatedCount > 1 ? "s have" : " has"} been added to your deposit.
-                        </p>
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1">
+                          <p className="text-xs font-bold text-amber-800">
+                            Late purchase — installments due upfront
+                          </p>
+                          <p className="text-xs text-amber-700 leading-relaxed">
+                            {singleCategory!.installmentPlan.consolidatedCount === 1
+                              ? "1 installment was already due before today."
+                              : `${singleCategory!.installmentPlan.consolidatedCount} installments were already due before today.`}{" "}
+                            These must be paid now along with your deposit to avoid your ticket being immediately flagged as overdue.
+                          </p>
+                        </div>
                       )}
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">
-                          Deposit ({singleCategory!.installmentPlan.initialPaymentPercent}%) — pay now
-                        </span>
-                        <span className="font-bold text-gray-900">KES {initialAmount.toLocaleString()}</span>
-                      </div>
+
+                      {/* Pay now breakdown */}
+                      {singleCategory!.installmentPlan.consolidatedCount > 0 ? (
+                        <div className="space-y-1 rounded-lg bg-gray-50 px-3 py-2">
+                          <div className="flex justify-between text-xs text-gray-600">
+                            <span>Deposit ({singleCategory!.installmentPlan.depositPercent}%)</span>
+                            <span>KES {Math.round((cartTotal * singleCategory!.installmentPlan.depositPercent) / 100).toLocaleString()}</span>
+                          </div>
+                          {singleCategory!.installmentPlan.consolidatedItems.map((item) => (
+                            <div key={item.installmentNumber} className="flex justify-between text-xs text-amber-700">
+                              <span>Installment {item.installmentNumber} catch-up — was due {format(new Date(item.dueDate), "dd MMM")}</span>
+                              <span>KES {Math.round((cartTotal * item.percentage) / 100).toLocaleString()}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between text-xs font-bold text-gray-900 border-t border-gray-200 pt-1 mt-1">
+                            <span>Total due now</span>
+                            <span>KES {initialAmount.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600">
+                            Deposit ({singleCategory!.installmentPlan.initialPaymentPercent}%) — pay now
+                          </span>
+                          <span className="font-bold text-gray-900">KES {initialAmount.toLocaleString()}</span>
+                        </div>
+                      )}
+
+                      {/* Upcoming installments */}
                       {singleCategory!.installmentPlan.scheduleItems.map((item) => (
                         <div key={item.installmentNumber} className="flex justify-between text-xs text-gray-500">
                           <span>
-                            Installment {item.installmentNumber} ({item.percentage}%) —{" "}
-                            {format(new Date(item.dueDate), "dd MMM yyyy")}
+                            Installment {item.installmentNumber} ({item.percentage}%) — {format(new Date(item.dueDate), "dd MMM yyyy")}
                           </span>
-                          <span>
-                            KES {Math.round((cartTotal * item.percentage) / 100).toLocaleString()}
-                          </span>
+                          <span>KES {Math.round((cartTotal * item.percentage) / 100).toLocaleString()}</span>
                         </div>
                       ))}
+
                       <p className="border-t border-gray-100 pt-1 text-[10px] text-gray-400">
                         Missed payments may result in ticket revocation. All payments are non-refundable.
                       </p>

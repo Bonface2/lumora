@@ -44,6 +44,22 @@ export function PurchaseSection({ categories, isLoggedIn, inviteToken }: Props) 
   const singleEntry = cartEntries.length === 1 ? cartEntries[0] : null;
   const singleCat = singleEntry ? categories.find((c) => c.id === singleEntry[0]) : null;
   const canUseInstallments = !!singleCat?.allowInstallments && !!singleCat?.installmentPlan;
+
+  // Compute past-due consolidation for the single-cat installment case
+  const now = new Date();
+  const consolidatedPlan = singleCat?.installmentPlan ? (() => {
+    const plan = singleCat.installmentPlan!;
+    const pastDue = plan.scheduleItems.filter((s) => new Date(s.dueDate) <= now);
+    const future = plan.scheduleItems.filter((s) => new Date(s.dueDate) > now);
+    const pastDuePct = pastDue.reduce((sum, s) => sum + s.percentage, 0);
+    return {
+      depositPercent: plan.initialPaymentPercent,
+      effectiveInitialPercent: plan.initialPaymentPercent + pastDuePct,
+      pastDueItems: pastDue,
+      futureItems: future,
+    };
+  })() : null;
+
   const cartHasInstallmentCategories =
     cartEntries.length > 1 &&
     cartEntries.some(([id]) => categories.find((c) => c.id === id)?.allowInstallments);
@@ -189,24 +205,59 @@ export function PurchaseSection({ categories, isLoggedIn, inviteToken }: Props) 
                 </div>
 
                 {/* Installment controls — only when this is the sole cart item */}
-                {cart.size === 1 && cat.allowInstallments && cat.installmentPlan && (
+                {cart.size === 1 && cat.allowInstallments && cat.installmentPlan && consolidatedPlan && (
                   <div className="space-y-3">
                     <div className="rounded-lg border border-primary-200 bg-white p-3 space-y-1.5 text-xs">
-                      <div className="flex justify-between font-medium text-gray-700">
-                        <span>Deposit ({cat.installmentPlan.initialPaymentPercent}%) — pay now</span>
-                        <span>KES {Math.round((cat.price * qty * cat.installmentPlan.initialPaymentPercent) / 100).toLocaleString()}</span>
-                      </div>
-                      {cat.installmentPlan.scheduleItems.map((item) => (
+
+                      {/* Late purchase warning */}
+                      {consolidatedPlan.pastDueItems.length > 0 && (
+                        <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 space-y-1 mb-2">
+                          <p className="font-bold text-amber-800">Late purchase — installments due upfront</p>
+                          <p className="text-amber-700 leading-relaxed">
+                            {consolidatedPlan.pastDueItems.length === 1
+                              ? "1 installment was already due before today."
+                              : `${consolidatedPlan.pastDueItems.length} installments were already due before today.`}{" "}
+                            These must be paid now with your deposit to avoid your ticket being immediately flagged as overdue.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Pay now breakdown */}
+                      {consolidatedPlan.pastDueItems.length > 0 ? (
+                        <div className="space-y-1 rounded-md bg-gray-50 px-2.5 py-2">
+                          <div className="flex justify-between text-gray-600">
+                            <span>Deposit ({consolidatedPlan.depositPercent}%)</span>
+                            <span>KES {Math.round(cat.price * qty * consolidatedPlan.depositPercent / 100).toLocaleString()}</span>
+                          </div>
+                          {consolidatedPlan.pastDueItems.map((item) => (
+                            <div key={item.installmentNumber} className="flex justify-between text-amber-700">
+                              <span>Installment {item.installmentNumber} catch-up — was due {format(new Date(item.dueDate), "dd MMM")}</span>
+                              <span>KES {Math.round(cat.price * qty * item.percentage / 100).toLocaleString()}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-1 mt-1">
+                            <span>Total due now</span>
+                            <span>KES {Math.round(cat.price * qty * consolidatedPlan.effectiveInitialPercent / 100).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between font-medium text-gray-700">
+                          <span>Deposit ({consolidatedPlan.depositPercent}%) — pay now</span>
+                          <span>KES {Math.round(cat.price * qty * consolidatedPlan.depositPercent / 100).toLocaleString()}</span>
+                        </div>
+                      )}
+
+                      {/* Upcoming installments */}
+                      {consolidatedPlan.futureItems.map((item) => (
                         <div key={item.installmentNumber} className="flex justify-between text-gray-500">
                           <span>
                             Installment {item.installmentNumber} ({item.percentage}%) — due{" "}
                             {format(new Date(item.dueDate), "dd MMM yyyy")}
                           </span>
-                          <span>
-                            KES {Math.round((cat.price * qty * item.percentage) / 100).toLocaleString()}
-                          </span>
+                          <span>KES {Math.round(cat.price * qty * item.percentage / 100).toLocaleString()}</span>
                         </div>
                       ))}
+
                       <p className="border-t border-gray-100 pt-1 text-gray-400">
                         Missed payments may result in ticket revocation. All payments are non-refundable.
                       </p>
@@ -285,11 +336,10 @@ export function PurchaseSection({ categories, isLoggedIn, inviteToken }: Props) 
           )}
 
           <Button className="w-full" size="lg" onClick={handleBuy}>
-            {useInstallments && singleEntry && canUseInstallments
+            {useInstallments && singleEntry && canUseInstallments && consolidatedPlan
               ? `Pay KES ${Math.round(
-                  (singleCat!.price * singleEntry[1] * singleCat!.installmentPlan!.initialPaymentPercent) /
-                    100
-                ).toLocaleString()} deposit${singleEntry[1] > 1 ? ` × ${singleEntry[1]} tickets` : ""}`
+                  (singleCat!.price * singleEntry[1] * consolidatedPlan.effectiveInitialPercent) / 100
+                ).toLocaleString()}${consolidatedPlan.pastDueItems.length > 0 ? " now" : " deposit"}${singleEntry[1] > 1 ? ` × ${singleEntry[1]} tickets` : ""}`
               : totalAmount === 0
               ? `Get ${totalTickets > 1 ? `${totalTickets} free tickets` : "free ticket"}`
               : `Buy ${totalTickets > 1 ? `${totalTickets} tickets` : "ticket"} — KES ${totalAmount.toLocaleString()}`}

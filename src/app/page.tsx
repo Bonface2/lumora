@@ -1,28 +1,23 @@
 import { db } from "@/lib/db";
-import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Footer } from "@/components/layouts/Footer";
 
-const getCachedHomeEvents = unstable_cache(
-  () =>
-    db.event.findMany({
-      where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
-      include: {
-        ticketCategories: {
-          select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
-          orderBy: { price: "asc" },
-        },
-      },
-      orderBy: { date: "asc" },
-      take: 8,
-    }),
-  ["home-events"],
-  { revalidate: 60 }
-);
+export const revalidate = 60;
 
 export default async function HomePage() {
-  const events = await getCachedHomeEvents();
+  const events = await db.event.findMany({
+    where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
+    include: {
+      ticketCategories: {
+        where: { isComplimentary: false },
+        select: { price: true, soldQuantity: true, totalQuantity: true, allowInstallments: true },
+        orderBy: { price: "asc" },
+      },
+    },
+    orderBy: { date: "asc" },
+    take: 8,
+  });
 
   return (
     <main className="min-h-screen bg-white font-sans">
@@ -30,7 +25,7 @@ export default async function HomePage() {
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-4 md:px-10">
         {/* Logo */}
         <Link href="/" className="flex items-center">
-          <span className="text-3xl font-bold tracking-wide text-primary-600" style={{ fontFamily: "var(--font-display)" }}>Lumora</span>
+          <img src="/logo.svg" alt="Lumora" className="h-16 w-auto object-contain" />
         </Link>
 
         {/* Right: login button */}

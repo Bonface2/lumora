@@ -1039,6 +1039,45 @@ export async function sendTransferNotification({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   11. Ticket transfer expired (sender notification)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendTransferExpired({
+  to,
+  name,
+  eventTitle,
+  toEmail,
+}: {
+  to: string;
+  name: string;
+  eventTitle: string;
+  toEmail: string;
+}) {
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      Your transfer invitation to <strong style="color:#0f172a;">${toEmail}</strong> for
+      <strong style="color:#0f172a;">${eventTitle}</strong> expired after 24 hours without a response.
+      Your ticket remains with you — you can initiate a new transfer at any time from your dashboard.
+    </p>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Transfer expired — ${eventTitle}`,
+    html: shell({
+      preheader: `Your transfer invitation to ${toEmail} has expired`,
+      headline: "Transfer invitation expired",
+      label: "Transfer update",
+      body,
+    }),
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PASSWORD RESET
    ═══════════════════════════════════════════════════════════════════════════ */
 

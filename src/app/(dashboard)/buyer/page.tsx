@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format } from "date-fns";
 import Link from "next/link";
+import { sendTransferExpired } from "@/lib/email";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { InstallmentPaymentStatus } from "@prisma/client";
 import { TransferButton } from "@/components/TransferButton";
@@ -161,11 +162,46 @@ export default async function BuyerTicketsPage({
     select: { name: true, email: true },
   });
 
-  // Pending transfers keyed by orderId
+  // Expire any stale pending transfers and notify the sender
+  const expiredTransfers = await db.ticketTransfer.findMany({
+    where: {
+      fromUserId: session!.user.id,
+      status: "PENDING",
+      expiresAt: { lt: now },
+    },
+    include: {
+      order: { include: { ticketCategory: { include: { event: true } } } },
+    },
+  });
+  if (expiredTransfers.length > 0) {
+    await db.ticketTransfer.updateMany({
+      where: { id: { in: expiredTransfers.map((t) => t.id) } },
+      data: { status: "EXPIRED" },
+    });
+    const sender = await db.user.findUnique({
+      where: { id: session!.user.id },
+      select: { name: true, email: true },
+    });
+    if (sender) {
+      await Promise.allSettled(
+        expiredTransfers.map((t) =>
+          sendTransferExpired({
+            to: sender.email!,
+            name: sender.name ?? sender.email!,
+            eventTitle: t.order.ticketCategory.event.title,
+            toEmail: t.toEmail,
+          })
+        )
+      );
+    }
+  }
+
+  // Pending transfers keyed by orderId (only non-expired)
   const pendingTransfers = await db.ticketTransfer.findMany({
     where: {
       fromUserId: session!.user.id,
       status: "PENDING",
+      expiresAt: { gt: now },
       orderId: { in: orders.map((o) => o.id) },
     },
     select: { id: true, orderId: true, toEmail: true, expiresAt: true },
