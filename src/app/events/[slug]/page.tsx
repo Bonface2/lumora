@@ -81,16 +81,7 @@ export default async function PublicEventPage({
           <Link href="/events" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
             ← Explore
           </Link>
-          {session?.user ? (
-            <NavUserSidebar user={session.user} dashboardHref={dashboardHref} />
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-xl bg-primary-600 px-5 py-2 text-sm font-bold tracking-wide text-white hover:bg-primary-700 transition-colors"
-            >
-              Log in
-            </Link>
-          )}
+          <NavUserSidebar />
         </div>
       </nav>
 

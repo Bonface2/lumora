@@ -267,20 +267,49 @@ export async function respondToTransfer(
     console.error("[transfer] accept notification threw:", err);
   }
 
-  // Send new ticket with regenerated QR to the recipient
-  try {
-    const { sendTicketConfirmation } = await import("@/lib/email");
-    await sendTicketConfirmation({
-      to: session.user.email!,
-      name: session.user.name ?? "there",
-      eventTitle: event_.title,
-      categoryName: transfer.order.ticketCategory.name,
-      ticketNumbers: newTicketNumbers,
-      eventDate: format(event_.date, "EEEE, dd MMMM yyyy · HH:mm"),
-      venue: `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`,
-    });
-  } catch (err) {
-    console.error("[transfer] ticket confirmation email threw:", err);
+  // Send recipient email — full ticket with QR only if PAID_IN_FULL
+  if (transfer.order.status === "PAID_IN_FULL") {
+    try {
+      const { sendTicketConfirmation } = await import("@/lib/email");
+      await sendTicketConfirmation({
+        to: session.user.email!,
+        name: session.user.name ?? "there",
+        eventTitle: event_.title,
+        categoryName: transfer.order.ticketCategory.name,
+        ticketNumbers: newTicketNumbers,
+        eventDate: format(event_.date, "EEEE, dd MMMM yyyy · HH:mm"),
+        venue: `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`,
+      });
+    } catch (err) {
+      console.error("[transfer] ticket confirmation email threw:", err);
+    }
+  } else {
+    // PARTIAL_PAID — new owner inherits remaining installment schedule, no QR yet
+    try {
+      const { sendTransferAcceptedInstallment } = await import("@/lib/email");
+      const remainingPayments = transfer.order.payments
+        .filter((p) => p.status !== "PAID")
+        .map((p) => ({
+          paymentNumber: p.paymentNumber,
+          amount: Number(p.amount) - Number(p.paidAmount),
+          dueDate: format(p.dueDate, "dd MMM yyyy"),
+        }));
+      await sendTransferAcceptedInstallment({
+        to: session.user.email!,
+        name: session.user.name ?? "there",
+        fromName: transfer.fromUser.name ?? transfer.fromUser.email,
+        eventTitle: event_.title,
+        categoryName: transfer.order.ticketCategory.name,
+        eventDate: format(event_.date, "EEEE, dd MMMM yyyy · HH:mm"),
+        venue: `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`,
+        totalAmount: Number(transfer.order.totalAmount),
+        totalPaid: Number(transfer.order.paidAmount),
+        remainingPayments,
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer`,
+      });
+    } catch (err) {
+      console.error("[transfer] installment transfer email threw:", err);
+    }
   }
 
   return { ok: true, data: {} };

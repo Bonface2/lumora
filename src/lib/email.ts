@@ -1042,6 +1042,120 @@ export async function sendTransferNotification({
    11. Ticket transfer expired (sender notification)
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   11b. Transfer accepted — installment plan (new owner has remaining payments)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function sendTransferAcceptedInstallment({
+  to,
+  name,
+  fromName,
+  eventTitle,
+  categoryName,
+  eventDate,
+  venue,
+  totalAmount,
+  totalPaid,
+  remainingPayments,
+  dashboardUrl,
+}: {
+  to: string;
+  name: string;
+  fromName: string;
+  eventTitle: string;
+  categoryName: string;
+  eventDate: string;
+  venue: string;
+  totalAmount: number;
+  totalPaid: number;
+  remainingPayments: { paymentNumber: number; amount: number; dueDate: string }[];
+  dashboardUrl: string;
+}) {
+  const fmt = (n: number) => `KES ${n.toLocaleString()}`;
+
+  const scheduleRows = remainingPayments
+    .map(
+      (p) => `
+    <tr>
+      <td style="padding:10px 0;border-top:1px solid #e0f7f7;font-size:13px;color:#475569;">
+        ${p.paymentNumber === 0 ? "Deposit" : `Installment ${p.paymentNumber}`}
+      </td>
+      <td style="padding:10px 0;border-top:1px solid #e0f7f7;font-size:13px;
+                  color:#475569;text-align:center;">${p.dueDate}</td>
+      <td style="padding:10px 0;border-top:1px solid #e0f7f7;font-size:13px;
+                  font-weight:700;color:#0f172a;text-align:right;">${fmt(p.amount)}</td>
+    </tr>`
+    )
+    .join("");
+
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      You're in, ${name}!
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      <strong style="color:#0f172a;">${fromName}</strong> has transferred their booking for
+      <strong style="color:#0f172a;">${eventTitle}</strong> to you. You've taken on their remaining
+      payment schedule — your spot is held and your ticket will be confirmed once all payments are complete.
+    </p>
+
+    ${infoCard([
+      { label: "Event",       value: eventTitle },
+      { label: "Ticket type", value: categoryName },
+      { label: "Date",        value: eventDate },
+      { label: "Venue",       value: venue },
+    ])}
+
+    <div style="margin-top:20px;">
+      ${progressBar(totalPaid, totalAmount)}
+    </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td style="font-size:13px;color:#92400e;line-height:1.5;">
+          <strong>⚠ Your ticket QR code will be issued once all payments are complete.</strong>
+          Missed payments may result in your spot being revoked.
+        </td>
+      </tr>
+    </table>
+
+    ${remainingPayments.length > 0 ? `
+    <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:1px;
+               text-transform:uppercase;color:#64748b;">
+      Remaining payments
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <th style="text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:#94a3b8;padding-bottom:8px;">Payment</th>
+        <th style="text-align:center;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:#94a3b8;padding-bottom:8px;">Due date</th>
+        <th style="text-align:right;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:#94a3b8;padding-bottom:8px;">Amount</th>
+      </tr>
+      ${scheduleRows}
+    </table>
+    ` : ""}
+
+    <div style="margin-top:28px;">
+      ${ctaButton("View my bookings", dashboardUrl)}
+    </div>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Transfer accepted — you're booked for ${eventTitle}`,
+    html: shell({
+      preheader: `${fromName} transferred their booking for ${eventTitle} to you. Remaining payments apply.`,
+      headline: eventTitle,
+      label: "Transfer accepted",
+      body,
+    }),
+  });
+}
+
 export async function sendTransferExpired({
   to,
   name,
