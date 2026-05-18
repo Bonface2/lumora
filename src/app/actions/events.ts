@@ -68,26 +68,6 @@ export async function createEvent(
   const isGroupTrip = data.experienceType === "GROUP_TRIP";
   if (isGroupTrip) {
     data.isPrivate = true;
-
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const groupTripsThisMonth = await db.event.count({
-      where: {
-        sellerId: session.user.id,
-        experienceType: "GROUP_TRIP",
-        createdAt: { gte: startOfMonth },
-        status: { not: "CANCELLED" },
-      },
-    });
-
-    if (groupTripsThisMonth >= 1) {
-      const nextMonth = new Date(startOfMonth);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      const nextMonthLabel = nextMonth.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-      return { ok: false, error: `You can only create one group trip per month. You can create your next one from ${nextMonthLabel}.` };
-    }
   }
 
   // For PAID non-group-trip events, verify payout method belongs to this seller

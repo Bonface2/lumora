@@ -193,7 +193,7 @@ export function NewEventFlow({ payoutMethods, defaultValues, groupTripAutoApprov
                 className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-primary-600"
               />
               <span className="text-xs leading-relaxed text-amber-800">
-                I confirm that this is a genuine social group trip organised for people I know personally, and that I am <strong>not</strong> running a commercial tour, travel package, safari, or any paid tourism service. I understand that if I am found to be conducting a commercial operation under the Group Trip category, I will face <strong>immediate account termination, forfeiture of payouts, and criminal prosecution</strong> under the laws of Kenya, including referral to the Kenya Revenue Authority.{" "}
+                I confirm that this is a genuine social group trip organised for people I know personally, and that I am <strong>not</strong> running a commercial tour, travel package, safari, or any paid tourism service. I understand that if I am found to be conducting a commercial operation under the Group Trip category, I will face <strong>immediate account termination and forfeiture of payouts</strong>, and Lumora may take <strong>legal action</strong> and liaise with the Kenya Revenue Authority on any evaded tax obligations.{" "}
                 <a href="/terms#10" target="_blank" className="font-semibold underline" onClick={(e) => e.stopPropagation()}>
                   Read Group Trip Policy →
                 </a>

@@ -125,7 +125,7 @@ export default async function TermsPage() {
         <Section number="04" title="Ticket Purchases">
           <p>All sales are between the Buyer and the Seller. Lumora acts as a technology intermediary and payment facilitator, not the organiser of any event. Lumora does not guarantee that an event will take place; event cancellations are the Seller's responsibility.</p>
           <ul className="mt-1 space-y-2">
-            <Bullet>Tickets are confirmed only upon successful payment or first instalment.</Bullet>
+            <Bullet>Tickets are confirmed only upon successful payment or first installment.</Bullet>
             <Bullet>Prices are displayed in Kenyan Shillings (KES) unless otherwise stated.</Bullet>
             <Bullet>Lumora reserves the right to charge a service fee on each transaction.</Bullet>
           </ul>
@@ -135,7 +135,7 @@ export default async function TermsPage() {
         <Section number="05" title="Installment Plans">
           <p>Where a Seller has enabled installment payments for a ticket category, the following terms apply:</p>
           <ul className="mt-1 space-y-2">
-            <Bullet>The Buyer agrees to pay each instalment by its stated due date.</Bullet>
+            <Bullet>The Buyer agrees to pay each installment by its stated due date.</Bullet>
             <Bullet>Reminder emails are sent automatically starting the day after a missed due date and each day thereafter until revocation.</Bullet>
             <Bullet>
               A ticket will be automatically revoked at whichever of the following occurs <strong className="text-gray-800">first</strong>:
@@ -150,7 +150,7 @@ export default async function TermsPage() {
           <p className="mt-3 font-semibold text-gray-800">Grace period hard cap</p>
           <ul className="mt-1 space-y-2">
             <Bullet>
-              A grace period <strong className="text-gray-800">cannot extend beyond the event date itself</strong>. When configuring a ticket category, the Platform will reject any grace period that would expire after the event. The maximum permitted grace period is determined by the gap between the final instalment due date and the event date.
+              A grace period <strong className="text-gray-800">cannot extend beyond the event date itself</strong>. When configuring a ticket category, the Platform will reject any grace period that would expire after the event. The maximum permitted grace period is determined by the gap between the final installment due date and the event date.
             </Bullet>
           </ul>
           <p className="mt-3 font-semibold text-gray-800">Why the 3-day cutoff exists</p>
@@ -165,7 +165,7 @@ export default async function TermsPage() {
           <p className="mt-3 font-semibold text-gray-800">3-days-before-event rule and overrides</p>
           <ul className="mt-1 space-y-2">
             <Bullet>
-              <strong className="text-gray-800">Automatic bypass.</strong> If a Buyer&apos;s instalment due date falls within 3 days of the event (or on the event day itself), the 3-day cutoff rule is automatically waived for that instalment. Revocation will then be triggered solely by the grace period expiry, not by the 3-day cutoff.
+              <strong className="text-gray-800">Automatic bypass.</strong> If a Buyer&apos;s installment due date falls within 3 days of the event (or on the event day itself), the 3-day cutoff rule is automatically waived for that installment. Revocation will then be triggered solely by the grace period expiry, not by the 3-day cutoff.
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">Seller opt-in override.</strong> If the grace period for a ticket category would extend past the 3-days-before-event threshold, the Platform alerts the Seller during setup. The Seller may choose to override the 3-day rule, in which case revocation will follow the full grace period timeline rather than the 3-day cutoff. This override applies to all Buyers in that ticket category.
@@ -204,7 +204,7 @@ export default async function TermsPage() {
               A revoked ticket may be <strong className="text-gray-800">reinstated</strong> by the event organiser or by a Lumora administrator — for example, following successful dispute resolution or a payment arrangement reached outside the Platform.
             </Bullet>
             <Bullet>
-              Reinstatement restores the ticket to <strong className="text-gray-800">Active</strong> status. Where the order was settled in full at the time of revocation, its status is restored to Paid in Full; where instalments were still outstanding, the order reverts to Partially Paid and any previously defaulted instalment payments are restored to Overdue status, meaning they remain due.
+              Reinstatement restores the ticket to <strong className="text-gray-800">Active</strong> status. Where the order was settled in full at the time of revocation, its status is restored to Paid in Full; where installments were still outstanding, the order reverts to Partially Paid and any previously defaulted installment payments are restored to Overdue status, meaning they remain due.
             </Bullet>
             <Bullet>
               The Buyer will receive an email notification when their ticket is reinstated. It is the Buyer&apos;s responsibility to ensure they meet any outstanding payment obligations following reinstatement.
@@ -238,7 +238,7 @@ export default async function TermsPage() {
               <strong className="text-gray-800">Installment responsibility.</strong> The recipient who accepts a transfer of a payment schedule assumes full liability for all outstanding installments from the date of transfer. Missed payments after transfer are subject to the same grace period and revocation rules as set out in Section 05.
             </Bullet>
             <Bullet>
-              <strong className="text-gray-800">Defaulted instalments on transfer.</strong> If any instalment payments on the order are in <em>defaulted</em> status at the time of transfer, the recipient must pay the full outstanding defaulted amount immediately upon accepting the transfer. The Platform will present a payment screen before completing the ownership change. The recipient will be clearly informed of the amount due before accepting. Subsequent instalments on the original schedule continue normally after the defaulted amount is cleared.
+              <strong className="text-gray-800">Defaulted installments on transfer.</strong> If any installment payments on the order are in <em>defaulted</em> status at the time of transfer, the recipient must pay the full outstanding defaulted amount immediately upon accepting the transfer. The Platform will present a payment screen before completing the ownership change. The recipient will be clearly informed of the amount due before accepting. Subsequent installments on the original schedule continue normally after the defaulted amount is cleared.
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">One pending transfer at a time.</strong> Only one transfer invitation may be active per order at any given time. The sender may cancel a pending invitation before it is accepted.
