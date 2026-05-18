@@ -18,25 +18,15 @@ interface CompCategory {
   soldQuantity: number;
 }
 
-interface CompOrder {
-  id: string;
-  buyer: { name: string | null; email: string };
-  ticketCategory: { name: string };
-  tickets: { ticketNumber: string }[];
-  createdAt: Date;
-}
-
 interface Props {
   eventId: string;
   initialCategories: CompCategory[];
-  initialOrders: CompOrder[];
 }
 
 const SUGGESTED = ["Complimentary", "Staff", "All Access", "Media", "VIP Guest", "Sponsor"];
 
-export function CompTicketForm({ eventId, initialCategories, initialOrders }: Props) {
+export function CompTicketForm({ eventId, initialCategories }: Props) {
   const [categories, setCategories] = useState<CompCategory[]>(initialCategories);
-  const [orders, setOrders] = useState<CompOrder[]>(initialOrders);
 
   // Add category form
   const [catName, setCatName] = useState("");
@@ -133,13 +123,6 @@ export function CompTicketForm({ eventId, initialCategories, initialOrders }: Pr
         c.id === categoryId ? { ...c, soldQuantity: c.soldQuantity + ticketNumbers.length } : c
       )
     );
-    setOrders((prev) => [{
-      id: ticketNumbers[0],
-      buyer: { name: recipientName, email: recipientEmail },
-      ticketCategory: { name: categories.find((c) => c.id === categoryId)?.name ?? "" },
-      tickets: ticketNumbers.map((n) => ({ ticketNumber: n })),
-      createdAt: new Date(),
-    }, ...prev]);
   }
 
   return (
@@ -345,50 +328,6 @@ export function CompTicketForm({ eventId, initialCategories, initialOrders }: Pr
         )}
       </div>
 
-      {/* ── Section 3: Issued tickets log ── */}
-      {orders.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-sm font-bold text-gray-700">Issued tickets</h3>
-          <div className="overflow-hidden rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-400">
-                  <th className="px-4 py-2">Recipient</th>
-                  <th className="px-4 py-2">Category</th>
-                  <th className="px-4 py-2">Ticket(s)</th>
-                  <th className="px-4 py-2">Sent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="border-b border-gray-50 last:border-0">
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-gray-900">{o.buyer.name || "—"}</p>
-                      <p className="text-xs text-gray-400">{o.buyer.email}</p>
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600">{o.ticketCategory.name}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-gray-600">
-                      {o.tickets.length > 1 ? (
-                        <span title={o.tickets.map((t) => t.ticketNumber).join(", ")}>
-                          {o.tickets[0].ticketNumber}
-                          <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-500 not-italic">
-                            +{o.tickets.length - 1} more
-                          </span>
-                        </span>
-                      ) : (
-                        o.tickets[0]?.ticketNumber ?? "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-400">
-                      {new Date(o.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

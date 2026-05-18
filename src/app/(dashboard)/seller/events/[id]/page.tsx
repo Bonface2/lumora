@@ -32,7 +32,7 @@ export default async function SellerEventDetailPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [event, compOrders, invites, allTiers, participantOrders, platformConfig] = await Promise.all([
+  const [event, , invites, allTiers, participantOrders, platformConfig] = await Promise.all([
     db.event.findFirst({
       where: { id, sellerId: session.user.id },
       include: {
@@ -42,15 +42,7 @@ export default async function SellerEventDetailPage({
         },
       },
     }),
-    db.order.findMany({
-      where: { ticketCategory: { eventId: id, isComplimentary: true } },
-      include: {
-        buyer: { select: { name: true, email: true } },
-        ticketCategory: { select: { name: true } },
-        tickets: { select: { ticketNumber: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
+    Promise.resolve([]),
     db.eventInvite.findMany({
       where: { eventId: id },
       orderBy: { createdAt: "desc" },
@@ -58,15 +50,15 @@ export default async function SellerEventDetailPage({
     db.platformFeeTier.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     db.order.findMany({
       where: {
-        ticketCategory: { eventId: id, isComplimentary: false },
+        ticketCategory: { eventId: id },
         status: { notIn: ["CANCELLED"] },
       },
       include: {
         buyer: { select: { name: true, email: true } },
-        ticketCategory: { select: { name: true } },
+        ticketCategory: { select: { name: true, isComplimentary: true } },
         payments: { orderBy: { paymentNumber: "asc" } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ ticketCategory: { isComplimentary: "asc" } }, { createdAt: "desc" }],
     }),
     getPlatformConfig(),
   ]);
@@ -79,7 +71,7 @@ export default async function SellerEventDetailPage({
 
 
   const paidCategories = event.ticketCategories.filter((c) => !c.isComplimentary);
-  const totalCollected = participantOrders.reduce((s, o) => s + Number(o.paidAmount), 0);
+  const totalCollected = participantOrders.filter((o) => !o.ticketCategory.isComplimentary).reduce((s, o) => s + Number(o.paidAmount), 0);
   const emailInviteSet = new Set(invites.map((inv: { email: string }) => inv.email.toLowerCase()));
   const totalSold = paidCategories.reduce((s, c) => s + c.soldQuantity, 0);
   const totalAvail = paidCategories.reduce((s, c) => s + c.totalQuantity, 0);
@@ -507,13 +499,6 @@ export default async function SellerEventDetailPage({
             initialCategories={event.ticketCategories
               .filter((c) => c.isComplimentary)
               .map((c) => ({ id: c.id, name: c.name, totalQuantity: c.totalQuantity, soldQuantity: c.soldQuantity }))}
-            initialOrders={compOrders.map((o) => ({
-              id: o.id,
-              buyer: o.buyer,
-              ticketCategory: o.ticketCategory,
-              tickets: o.tickets,
-              createdAt: o.createdAt,
-            }))}
           />
         </div>
       </div>
@@ -560,6 +545,7 @@ export default async function SellerEventDetailPage({
                       : null;
 
                     const statusBadge = () => {
+                      if (order.ticketCategory.isComplimentary) return { label: "Complimentary", cls: "bg-primary-50 text-primary-700" };
                       if (order.status === "PAID_IN_FULL") return { label: "Paid in full", cls: "bg-emerald-50 text-emerald-700" };
                       if (order.status === "PARTIAL_PAID") return { label: "Partial", cls: "bg-amber-50 text-amber-700" };
                       if (order.status === "PENDING")      return { label: "Pending", cls: "bg-gray-100 text-gray-600" };
@@ -580,9 +566,15 @@ export default async function SellerEventDetailPage({
                         </td>
                         <td className="px-5 py-4 text-gray-600">{order.ticketCategory.name}</td>
                         <td className="px-5 py-4">
-                          <p className="font-semibold text-gray-900">KES {paidAmt.toLocaleString()}</p>
-                          {paidAmt < totalAmt && (
-                            <p className="text-xs text-gray-400">of KES {totalAmt.toLocaleString()}</p>
+                          {order.ticketCategory.isComplimentary ? (
+                            <span className="text-xs font-semibold text-primary-600">—</span>
+                          ) : (
+                            <>
+                              <p className="font-semibold text-gray-900">KES {paidAmt.toLocaleString()}</p>
+                              {paidAmt < totalAmt && (
+                                <p className="text-xs text-gray-400">of KES {totalAmt.toLocaleString()}</p>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className="px-5 py-4">

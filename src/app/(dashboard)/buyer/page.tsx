@@ -14,6 +14,7 @@ const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
   REVOKED: { label: "Revoked", cls: "bg-red-100 text-red-600" },
   CANCELLED: { label: "Cancelled", cls: "bg-gray-100 text-gray-500" },
 };
+const compStatusCfg = { label: "Complimentary", cls: "bg-primary-100 text-primary-700" };
 
 const gradients = [
   "from-primary-600 to-cyan-400",
@@ -311,7 +312,8 @@ export default async function BuyerTicketsPage({
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {orders.map((order) => {
               const event = order.ticketCategory.event;
-              const cfg = statusConfig[order.status];
+              const isComp = order.ticketCategory.isComplimentary;
+              const cfg = isComp ? compStatusCfg : statusConfig[order.status];
               const paidAmount = Number(order.paidAmount);
               const totalAmount = Number(order.totalAmount);
               const progress = totalAmount > 0 ? Math.min(100, (paidAmount / totalAmount) * 100) : 0;
@@ -374,7 +376,7 @@ export default async function BuyerTicketsPage({
                       </div>
                     )}
 
-                    {order.usesInstallments && (
+                    {order.usesInstallments && !isComp && (
                       <div className="mt-4 rounded-xl bg-gray-50 p-3">
                         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                           <span className="font-medium">Payment progress</span>
