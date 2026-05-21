@@ -7,7 +7,15 @@ export const revalidate = 60;
 
 export default async function HomePage() {
   const events = await db.event.findMany({
-    where: { status: "PUBLISHED", isPrivate: false, experienceType: "PUBLIC" },
+    where: {
+      status: "PUBLISHED",
+      isPrivate: false,
+      experienceType: "PUBLIC",
+      OR: [
+        { endDate: { gte: new Date() } },
+        { endDate: null, date: { gte: new Date() } },
+      ],
+    },
     include: {
       ticketCategories: {
         where: { isComplimentary: false },

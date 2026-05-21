@@ -318,6 +318,7 @@ function CheckoutContent() {
               </span>
             ))}
           </div>
+
         </div>
       </div>
 
@@ -539,6 +540,16 @@ function CheckoutContent() {
               >
                 ← Go back
               </button>
+
+              {!isFree && (
+                <a href="https://intasend.com/security" target="_blank" rel="noopener noreferrer" className="block pt-1">
+                  <img
+                    src="https://intasend-prod-static.s3.amazonaws.com/img/trust-badges/intasend-trust-badge-with-mpesa-hr-dark.png"
+                    alt="IntaSend Secure Payments (PCI-DSS Compliant)"
+                    className="w-full hover:opacity-90 transition-opacity"
+                  />
+                </a>
+              )}
             </div>
           </div>
         </div>
