@@ -243,7 +243,7 @@ export default function PayInstallmentPage() {
               onClick={handlePay}
               disabled={mode === "custom" && (!customAmount || parseFloat(customAmount) <= 0)}
             >
-              Pay with Paystack
+              Pay securely
             </Button>
 
             <button

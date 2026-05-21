@@ -126,7 +126,7 @@ export default async function SellerEventsPage() {
           <div className="flex-1">
             <p className="text-sm font-bold text-amber-800">Add a payout method to receive earnings</p>
             <p className="mt-0.5 text-sm text-amber-700">
-              Paystack requires identity verification before settling funds. Add a bank account or M-PESA number in Settings so payouts aren&apos;t held after your event.
+              Add a bank account or M-PESA number in Settings so your earnings can be paid out after your event.
             </p>
           </div>
           <Link

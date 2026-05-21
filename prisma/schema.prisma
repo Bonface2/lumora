@@ -270,7 +270,7 @@ model Order {
   ticketCategory TicketCategory        @relation(fields: [ticketCategoryId], references: [id])
   tickets        Ticket[]
   payments       InstallmentPayment[]
-  transactions   PaystackTransaction[]
+  transactions   PaymentTransaction[]
   transfers      TicketTransfer[]
 
   @@index([buyerId])
@@ -317,7 +317,7 @@ model InstallmentPayment {
 
   order        Order                    @relation(fields: [orderId], references: [id])
   scheduleItem InstallmentScheduleItem? @relation(fields: [installmentScheduleItemId], references: [id])
-  transactions PaystackTransaction[]
+  transactions PaymentTransaction[]
 
   @@index([orderId])
   @@index([status])
@@ -325,14 +325,14 @@ model InstallmentPayment {
   @@map("installment_payments")
 }
 
-model PaystackTransaction {
+model PaymentTransaction {
   id                   String   @id @default(cuid())
   orderId              String
   installmentPaymentId String?
   amount               Decimal  @db.Decimal(10, 2)
   reference            String   @unique
-  paystackRef          String?
-  status               String   @default("pending") // pending | success | failed
+  providerRef          String?  // IntaSend invoice_id
+  status               String   @default("pending") // pending | processing | success | failed
   metadata             Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -340,7 +340,7 @@ model PaystackTransaction {
   order              Order               @relation(fields: [orderId], references: [id])
   installmentPayment InstallmentPayment? @relation(fields: [installmentPaymentId], references: [id])
 
-  @@map("paystack_transactions")
+  @@map("payment_transactions")
 }
 
 // ─── Payouts ──────────────────────────────────────────────────────────────────
@@ -351,7 +351,7 @@ model Payout {
   payoutMethodId String?
   amount         Decimal  @db.Decimal(10, 2)
   reference      String   @unique
-  paystackRef    String?
+  providerRef    String?  // IntaSend tracking_id
   status         String   @default("pending")
   reason         String?
   metadata       Json?
@@ -365,17 +365,16 @@ model Payout {
 }
 
 model PayoutMethod {
-  id                    String   @id @default(cuid())
-  sellerId              String
-  label                 String?
-  paystackRecipientCode String
-  paystackBankCode      String
-  paystackBankName      String
-  bankType              String
-  paystackAccountNumber String
-  paystackAccountName   String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id          String   @id @default(cuid())
+  sellerId    String
+  label       String?
+  bankCode    String
+  bankName    String
+  bankType    String
+  accountNumber String
+  accountName   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   seller User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   events Event[]
@@ -468,6 +467,8 @@ model PlatformConfig {
   paidFeePercent          Decimal  @default(6)  @db.Decimal(5, 2)
   groupTripFlatFee        Decimal  @default(50) @db.Decimal(10, 2)
   groupTripAutoApproveCap Int      @default(10)
+  convenienceFee          Decimal  @default(50) @db.Decimal(10, 2)
+  installmentFeePercent   Decimal  @default(2)  @db.Decimal(5, 2)
   updatedAt               DateTime @updatedAt
 
   @@map("platform_config")

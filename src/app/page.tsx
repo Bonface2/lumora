@@ -60,7 +60,7 @@ export default async function HomePage() {
           </h1>
           <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-gray-400">
             Concerts, tours, group trips, retreats — buy tickets in full or
-            spread the cost with installments. Secure payments via Paystack.
+            spread the cost with installments. Secure payments via IntaSend.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
@@ -85,7 +85,7 @@ export default async function HomePage() {
           {[
             { icon: "💳", label: "Pay in installments", body: "Deposit now, spread the rest over time. Works for any experience — concerts to multi-day tours." },
             { icon: "🗺️", label: "Events, tours & more", body: "Concerts, group trips, retreats, day tours — one platform for any shared experience." },
-            { icon: "🔒", label: "Paystack secure", body: "Fast, trusted card payments — no third-party sign-up required." },
+            { icon: "🔒", label: "IntaSend secure", body: "Fast, trusted M-PESA and card payments — no third-party sign-up required." },
           ].map((f) => (
             <div key={f.label} className="flex items-start gap-4 px-8 py-8">
               <span className="text-2xl">{f.icon}</span>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { initiateTransfer, toKobo, generateReference } from "@/lib/paystack";
+import { sendMoney, getIntaSendProvider, generateReference } from "@/lib/intasend";
 import { getPlatformConfig, computeSellerNet } from "@/lib/platformConfig";
 import {
   sendTicketReinstatementNotice,
@@ -138,10 +138,9 @@ export async function getSellerBalances() {
                 select: {
                   id: true,
                   label: true,
-                  paystackBankName: true,
-                  paystackBankCode: true,
-                  paystackAccountNumber: true,
-                  paystackRecipientCode: true,
+                  bankName: true,
+                  bankCode: true,
+                  accountNumber: true,
                   bankType: true,
                 },
               },
@@ -168,7 +167,6 @@ export async function getSellerBalances() {
       bankName: string;
       bankCode: string;
       accountNumber: string;
-      recipientCode: string;
       bankType: string;
     } | null;
   }> = {};
@@ -202,10 +200,9 @@ export async function getSellerBalances() {
         ? {
             id: event.payoutMethod.id,
             label: event.payoutMethod.label,
-            bankName: event.payoutMethod.paystackBankName,
-            bankCode: event.payoutMethod.paystackBankCode,
-            accountNumber: event.payoutMethod.paystackAccountNumber,
-            recipientCode: event.payoutMethod.paystackRecipientCode,
+            bankName: event.payoutMethod.bankName,
+            bankCode: event.payoutMethod.bankCode,
+            accountNumber: event.payoutMethod.accountNumber,
             bankType: event.payoutMethod.bankType,
           }
         : null,
@@ -396,7 +393,7 @@ export async function triggerSellerPayout(
 
   const method = await db.payoutMethod.findFirst({
     where: { id: payoutMethodId, sellerId },
-    select: { paystackRecipientCode: true },
+    select: { bankCode: true, accountNumber: true, accountName: true, bankType: true },
   });
   if (!method) return { ok: false, error: "Payout method not found." };
 
@@ -420,16 +417,25 @@ export async function triggerSellerPayout(
   });
 
   try {
-    const transfer = await initiateTransfer({
-      amount: toKobo(amount),
-      recipient: method.paystackRecipientCode,
-      reference,
-      reason: `Lumora payout — ${seller.name ?? seller.email}`,
+    const provider = getIntaSendProvider(method.bankType);
+    const result = await sendMoney({
+      provider,
+      transactions: [
+        {
+          name: method.accountName ?? seller.name ?? seller.email ?? "Seller",
+          account: method.accountNumber,
+          amount,
+          narrative: `Lumora payout — ${seller.name ?? seller.email}`,
+          ...(provider === "PESALINK" ? { bank_code: method.bankCode } : {}),
+          ...(provider === "MPESA-B2B" ? { account_type: "PayBill" as const } : {}),
+        },
+      ],
+      batch_reference: reference,
     });
 
     await db.payout.update({
       where: { id: payout.id },
-      data: { paystackRef: transfer.transferCode, status: transfer.status === "success" ? "success" : "pending" },
+      data: { providerRef: result.trackingId, status: result.ok ? "pending" : "failed" },
     });
 
     return { ok: true, data: { payoutId: payout.id } };

@@ -39,7 +39,7 @@ export default function AdminPayoutsPage() {
     setResults((prev) => ({
       ...prev,
       [b.key]: res.ok
-        ? { ok: true, msg: "Transfer initiated — pending Paystack confirmation." }
+        ? { ok: true, msg: "Transfer initiated — pending IntaSend confirmation." }
         : { ok: false, msg: res.error },
     }));
     if (res.ok) {
@@ -208,7 +208,7 @@ export default function AdminPayoutsPage() {
 
         {!loading && balances.length > 0 && (
           <p className="mt-6 text-center text-xs text-gray-400">
-            Transfers are processed by Paystack — minutes for mobile money, 1–2 business days for bank accounts.
+            Transfers are processed by IntaSend — minutes for mobile money, 1–2 business days for bank accounts.
           </p>
         )}
 

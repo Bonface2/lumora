@@ -48,10 +48,10 @@ const MOBILE_MONEY_TYPES = new Set(["mobile_money", "mobile_money_business"]);
 
 function methodDisplay(m: PayoutMethodData) {
   if (m.bankType === "mobile_money_business") {
-    return `Paybill: ${m.paystackAccountNumber}${m.paystackAccountName ? ` · Acc: ${m.paystackAccountName}` : ""}`;
+    return `Paybill: ${m.accountNumber}${m.accountName ? ` · Acc: ${m.accountName}` : ""}`;
   }
-  if (m.bankType === "mobile_money") return m.paystackAccountNumber;
-  return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
+  if (m.bankType === "mobile_money") return m.accountNumber;
+  return `****${m.accountNumber.slice(-4)}${m.accountName ? ` · ${m.accountName}` : ""}`;
 }
 
 function GroupTripCapacityBar({ guestCount, categories }: { guestCount: number; categories: { totalQuantity?: number }[] }) {
@@ -286,7 +286,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                         <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-gray-900">{locked.paystackBankName}</span>
+                              <span className="font-semibold text-gray-900">{locked.bankName}</span>
                               {locked.label && (
                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
                                   {locked.label}
@@ -333,7 +333,7 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
                         />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-gray-900">{m.paystackBankName}</span>
+                            <span className="font-semibold text-gray-900">{m.bankName}</span>
                             {m.label && (
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
                                 {m.label}

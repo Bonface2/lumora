@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { verifyPayment } from "@/lib/paystack";
+import { verifyPayment } from "@/lib/intasend";
 import { db } from "@/lib/db";
 import { finalizeOrderFromCallback } from "@/app/actions/orders";
 import Link from "next/link";
@@ -7,20 +7,32 @@ import Link from "next/link";
 export default async function CallbackPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reference?: string; trxref?: string }>;
+  searchParams: Promise<{ reference?: string; trxref?: string; invoice_id?: string }>;
 }) {
-  const { reference, trxref } = await searchParams;
+  const { reference, trxref, invoice_id } = await searchParams;
   const ref = reference ?? trxref;
 
   if (!ref) redirect("/");
 
-  // Verify with Paystack directly
+  // Resolve the IntaSend invoice_id: prefer URL param (IntaSend appends it on redirect),
+  // fall back to the stored providerRef in the transaction record.
+  let invoiceId = invoice_id;
+  if (!invoiceId) {
+    const txn = await db.paymentTransaction.findUnique({
+      where: { reference: ref },
+      select: { providerRef: true },
+    });
+    invoiceId = txn?.providerRef ?? undefined;
+  }
+
   let verified = false;
-  let amountNaira = 0;
+  let amountKes = 0;
   try {
-    const result = await verifyPayment(ref);
-    verified = result.data.status === "success";
-    amountNaira = (result.data.amount ?? 0) / 100;
+    if (invoiceId) {
+      const result = await verifyPayment(invoiceId);
+      verified = result.verified;
+      amountKes = result.amount;
+    }
   } catch {
     verified = false;
   }
@@ -42,12 +54,11 @@ export default async function CallbackPage({
     );
   }
 
-  // Payment verified — ensure the order is finalized even if the webhook hasn't fired yet.
-  // finalizeOrderFromCallback uses an idempotency guard so it's safe if webhook also fires.
-  await finalizeOrderFromCallback(ref, amountNaira);
+  // Payment verified — finalize even if webhook already fired (idempotent).
+  await finalizeOrderFromCallback(ref, amountKes);
 
   // Reload transaction with updated order state
-  const transaction = await db.paystackTransaction.findUnique({
+  const transaction = await db.paymentTransaction.findUnique({
     where: { reference: ref },
     include: { order: { include: { tickets: true, ticketCategory: { include: { event: true } } } } },
   });

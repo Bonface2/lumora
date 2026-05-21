@@ -19,8 +19,8 @@ export function TransferActions({ token, defaultedTotal }: { token: string; defa
       return;
     }
     if (action === "accept") {
-      if (res.data?.paystackUrl) {
-        window.location.href = res.data.paystackUrl;
+      if (res.data?.paymentUrl) {
+        window.location.href = res.data.paymentUrl;
       } else {
         router.push("/buyer?transferred=1");
       }

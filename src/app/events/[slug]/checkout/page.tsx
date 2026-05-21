@@ -18,6 +18,8 @@ interface CategoryPreview {
   coverImage: string | null;
   eventSlug: string;
   allowInstallments: boolean;
+  convenienceFee: number;
+  installmentFeePercent: number;
   installmentPlan: {
     initialPaymentPercent: number;
     depositPercent: number;
@@ -222,10 +224,16 @@ function CheckoutContent() {
     ? cartItems.reduce((sum, item) => sum + item.preview.price * item.quantity, 0)
     : singleCategory!.price * singleQty;
   const isFree = cartTotal === 0;
-  const initialAmount =
+  const convFee = isFree ? 0 : (displayCategory.convenienceFee ?? 0);
+  const ticketAmountDueNow =
     !isCartCheckout && singleCategory?.installmentPlan && useInstallments
       ? Math.round((cartTotal * singleCategory.installmentPlan.initialPaymentPercent) / 100)
       : cartTotal;
+  const installmentFee =
+    !isCartCheckout && useInstallments && singleCategory?.installmentPlan
+      ? Math.round(cartTotal * ((singleCategory.installmentFeePercent ?? 0) / 100))
+      : 0;
+  const initialAmount = ticketAmountDueNow + convFee + installmentFee;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row font-sans">
@@ -298,7 +306,7 @@ function CheckoutContent() {
               : [
                   { icon: "🔒", label: "Secure payment" },
                   { icon: "⚡", label: "Instant ticket" },
-                  { icon: "✓", label: "Paystack verified" },
+                  { icon: "✓", label: "IntaSend verified" },
                 ]
             ).map((t) => (
               <span
@@ -466,6 +474,26 @@ function CheckoutContent() {
                 </div>
               )}
 
+              {/* Fee line items */}
+              {!isFree && (
+                <div className="space-y-1.5 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between text-gray-600">
+                    <span>Tickets subtotal</span>
+                    <span className="font-semibold text-gray-800">KES {ticketAmountDueNow.toLocaleString()}</span>
+                  </div>
+                  {installmentFee > 0 && (
+                    <div className="flex items-center justify-between text-gray-600">
+                      <span>Installment fee ({singleCategory?.installmentFeePercent ?? 0}%)</span>
+                      <span className="font-semibold text-gray-800">KES {installmentFee.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-gray-600">
+                    <span>Processing fee</span>
+                    <span className="font-semibold text-gray-800">KES {convFee.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Due now */}
               <div className="flex items-center justify-between rounded-xl bg-primary-50 px-4 py-3">
                 <span className="font-bold text-gray-900">{isFree ? "Total" : "Due now"}</span>
@@ -498,7 +526,7 @@ function CheckoutContent() {
                     <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
-                    Pay with Paystack
+                    Pay securely
                   </>
                 )}
               </Button>

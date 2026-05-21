@@ -3,7 +3,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { format, addDays } from "date-fns";
-import { initializePayment, toKobo, generateReference } from "@/lib/paystack";
+import { initializePayment, generateReference } from "@/lib/intasend";
 import { generateTicketNumber, eventTitlePrefix } from "@/lib/tickets";
 import type { ApiResponse } from "@/types";
 
@@ -133,7 +133,7 @@ export async function getTransferByToken(token: string) {
 export async function respondToTransfer(
   token: string,
   action: "accept" | "decline"
-): Promise<ApiResponse<{ paystackUrl?: string }>> {
+): Promise<ApiResponse<{ paymentUrl?: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Please sign in." };
 
@@ -186,7 +186,7 @@ export async function respondToTransfer(
       (sum, p) => sum + (Number(p.amount) - Number(p.paidAmount)), 0,
     );
     const reference = generateReference("TDF");
-    await db.paystackTransaction.create({
+    await db.paymentTransaction.create({
       data: {
         orderId: transfer.orderId,
         amount: defaultedTotal,
@@ -202,17 +202,19 @@ export async function respondToTransfer(
     });
     const init = await initializePayment({
       email: session.user!.email!,
-      amount: toKobo(defaultedTotal),
+      amount: defaultedTotal,
       reference,
-      metadata: {
-        type: "transfer_default_payment",
-        transferToken: token,
-        toUserId: session.user!.id,
-        orderId: transfer.orderId,
-      },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/buyer?transferred=1`,
+      redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/buyer?transferred=1`,
     });
-    return { ok: true, data: { paystackUrl: init.data.authorization_url } };
+    if (!init.ok) {
+      await db.paymentTransaction.delete({ where: { reference } });
+      return { ok: false, error: "Failed to initialise payment. Please try again." };
+    }
+    await db.paymentTransaction.updateMany({
+      where: { reference },
+      data: { providerRef: init.invoiceId },
+    });
+    return { ok: true, data: { paymentUrl: init.url } };
   }
 
   // Accept — transfer ownership in a transaction, regenerating ticket numbers

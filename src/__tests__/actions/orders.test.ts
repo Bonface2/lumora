@@ -10,20 +10,18 @@ const mocks = vi.hoisted(() => ({
     order: { create: vi.fn(), delete: vi.fn() },
     user: { findUniqueOrThrow: vi.fn() },
     installmentPayment: { create: vi.fn() },
-    paystackTransaction: { create: vi.fn(), deleteMany: vi.fn() },
+    paymentTransaction: { create: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   },
   initializePayment: vi.fn(),
   generateReference: vi.fn(),
-  toKobo: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
-vi.mock("@/lib/paystack", () => ({
+vi.mock("@/lib/intasend", () => ({
   initializePayment: mocks.initializePayment,
   generateReference: mocks.generateReference,
-  toKobo: mocks.toKobo,
 }));
 
 // ─── test helpers ────────────────────────────────────────────────────────────
@@ -58,17 +56,18 @@ describe("createOrder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.generateReference.mockReturnValue("ref_test_001");
-    mocks.toKobo.mockImplementation((n: number) => n * 100);
     mocks.db.$transaction.mockImplementation(
       async (fn: (tx: typeof mocks.db) => Promise<unknown>) => fn(mocks.db)
     );
     mocks.db.order.create.mockResolvedValue({ id: "order1" });
     mocks.db.installmentPayment.create.mockResolvedValue({});
-    mocks.db.paystackTransaction.create.mockResolvedValue({});
+    mocks.db.paymentTransaction.create.mockResolvedValue({});
+    mocks.db.paymentTransaction.updateMany.mockResolvedValue({});
     mocks.db.user.findUniqueOrThrow.mockResolvedValue({ email: "buyer@test.com" });
     mocks.initializePayment.mockResolvedValue({
-      status: true,
-      data: { authorization_url: "https://paystack.com/pay/abc" },
+      ok: true,
+      url: "https://sandbox.intasend.com/pay/abc",
+      invoiceId: "inv_abc123",
     });
   });
 
@@ -171,7 +170,7 @@ describe("createOrder", () => {
     mocks.auth.mockResolvedValue(SESSION);
     mocks.db.ticketCategory.findUnique.mockResolvedValue(makeCategory());
     const result = await createOrder({ ticketCategoryId: "cat1", useInstallments: false });
-    expect(result).toEqual({ ok: true, data: { paymentUrl: "https://paystack.com/pay/abc" } });
+    expect(result).toEqual({ ok: true, data: { paymentUrl: "https://sandbox.intasend.com/pay/abc" } });
   });
 
   it("charges the full total for multi-quantity PAID orders", async () => {
@@ -180,9 +179,9 @@ describe("createOrder", () => {
       makeCategory({ price: 2500, totalQuantity: 50, soldQuantity: 5 })
     );
     await createOrder({ ticketCategoryId: "cat1", useInstallments: false, quantity: 2 });
-    // 2500 * 2 = 5000, toKobo = 500000
+    // 2500 * 2 = 5000 KES
     expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 500000 })
+      expect.objectContaining({ amount: 5000 })
     );
   });
 
@@ -200,9 +199,9 @@ describe("createOrder", () => {
       makeCategory({ price: 1000, allowInstallments: true, installmentPlan })
     );
     await createOrder({ ticketCategoryId: "cat1", useInstallments: true });
-    // 30% of 1000 = 300, toKobo = 30000
+    // 30% of 1000 = 300 KES
     expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 30000 })
+      expect.objectContaining({ amount: 300 })
     );
   });
 
@@ -220,16 +219,16 @@ describe("createOrder", () => {
       makeCategory({ price: 1000, allowInstallments: true, installmentPlan })
     );
     await createOrder({ ticketCategoryId: "cat1", useInstallments: true });
-    // 30% initial + 20% past-due = 50% of 1000 = 500, toKobo = 50000
+    // 30% initial + 20% past-due = 50% of 1000 = 500 KES
     expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 50000 })
+      expect.objectContaining({ amount: 500 })
     );
   });
 
-  it("deletes the order if Paystack initialization fails", async () => {
+  it("deletes the order if payment initialization fails", async () => {
     mocks.auth.mockResolvedValue(SESSION);
     mocks.db.ticketCategory.findUnique.mockResolvedValue(makeCategory());
-    mocks.initializePayment.mockResolvedValue({ status: false, data: {} });
+    mocks.initializePayment.mockResolvedValue({ ok: false, url: "", invoiceId: "" });
     const result = await createOrder({ ticketCategoryId: "cat1", useInstallments: false });
     expect(result.ok).toBe(false);
     expect(mocks.db.order.delete).toHaveBeenCalledWith({ where: { id: "order1" } });

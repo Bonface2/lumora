@@ -70,7 +70,7 @@ export default async function ActivateEventPage({
         />
 
         <p className="mt-4 text-xs text-gray-400">
-          You will be redirected to Paystack to complete payment. Once confirmed, your event will be ready to publish.
+          You will be redirected to IntaSend to complete payment. Once confirmed, your event will be ready to publish.
           You can upgrade your tier at any time from your event dashboard.
         </p>
       </div>

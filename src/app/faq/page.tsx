@@ -19,7 +19,7 @@ const CATEGORIES = [
       },
       {
         q: "What payment methods are accepted?",
-        a: "All payments are processed securely by Paystack. We accept major debit/credit cards (Visa, Mastercard) and mobile money options supported by Paystack in Kenya. Card details are never stored on Lumora's servers.",
+        a: "All payments are processed securely by IntaSend. We accept M-PESA, major debit/credit cards (Visa, Mastercard), and bank transfers. Card details are never stored on Lumora's servers.",
       },
       {
         q: "How do I receive my ticket after purchase?",
@@ -115,7 +115,7 @@ const CATEGORIES = [
     items: [
       {
         q: "Is my payment information secure?",
-        a: "Yes. All payment processing is handled by Paystack, a PCI-DSS compliant payment processor. Your card and mobile money details are never stored on Lumora's servers. All data is transmitted over HTTPS.",
+        a: "Yes. All payment processing is handled by IntaSend, a PCI-DSS compliant payment processor regulated by the Central Bank of Kenya. Your card and mobile money details are never stored on Lumora's servers. All data is transmitted over HTTPS.",
       },
       {
         q: "I forgot my password. How do I reset it?",

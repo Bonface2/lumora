@@ -5,6 +5,8 @@ export type PlatformConfigData = {
   paidFeePercent: number;
   groupTripFlatFee: number;
   groupTripAutoApproveCap: number;
+  convenienceFee: number;      // flat KES per paid checkout transaction
+  installmentFeePercent: number; // % of total ticket price charged when using installments
 };
 
 export async function getPlatformConfig(): Promise<PlatformConfigData> {
@@ -27,6 +29,8 @@ export async function getPlatformConfig(): Promise<PlatformConfigData> {
     paidFeePercent: Number(config.paidFeePercent),
     groupTripFlatFee: Number(config.groupTripFlatFee),
     groupTripAutoApproveCap: config.groupTripAutoApproveCap,
+    convenienceFee: Number(config.convenienceFee),
+    installmentFeePercent: Number(config.installmentFeePercent),
   };
 }
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
-import { initializePayment, generateReference } from "@/lib/paystack";
+import { initializePayment, generateReference } from "@/lib/intasend";
 import { cancelInstallmentJobs, cancelSellerAlertJobs, scheduleDefaultWarnings, scheduleTicketRevocation } from "@/lib/queue";
 import {
   sendTicketRevocationNotice,
@@ -406,7 +406,7 @@ export async function unpublishEvent(
 export async function initiateEventActivationFee(
   eventId: string,
   tierId: string
-): Promise<ApiResponse<{ authorizationUrl: string }>> {
+): Promise<ApiResponse<{ authorizationUrl: string; invoiceId: string }>> {
   const session = await auth();
   if (!session?.user || session.user.role !== "SELLER") {
     return { ok: false, error: "Unauthorized." };
@@ -426,25 +426,20 @@ export async function initiateEventActivationFee(
 
   const res = await initializePayment({
     email: session.user.email!,
-    amount: tier.price * 100, // convert KES to smallest unit
+    amount: tier.price,
     reference,
-    metadata: {
-      type: "free_event_fee",
-      eventId,
-      tierId: tier.id,
-      tierCap: tier.maxCap,
-      tierPrice: tier.price,
-    },
-    callback_url: `${process.env.NEXTAUTH_URL}/seller/events/${eventId}/activate/callback`,
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/events/${eventId}/activate/callback?reference=${reference}`,
   });
 
-  return { ok: true, data: { authorizationUrl: res.data.authorization_url } };
+  if (!res.ok) return { ok: false, error: "Failed to initialise payment. Please try again." };
+
+  return { ok: true, data: { authorizationUrl: res.url, invoiceId: res.invoiceId } };
 }
 
 export async function initiateEventTierUpgrade(
   eventId: string,
   tierId: string
-): Promise<ApiResponse<{ authorizationUrl: string }>> {
+): Promise<ApiResponse<{ authorizationUrl: string; invoiceId: string }>> {
   const session = await auth();
   if (!session?.user || session.user.role !== "SELLER") {
     return { ok: false, error: "Unauthorized." };
@@ -470,20 +465,14 @@ export async function initiateEventTierUpgrade(
 
   const res = await initializePayment({
     email: session.user.email!,
-    amount: upgradeCost * 100,
+    amount: upgradeCost,
     reference,
-    metadata: {
-      type: "free_event_fee",
-      eventId,
-      tierId: tier.id,
-      tierCap: tier.maxCap,
-      tierPrice: tier.price,
-      isUpgrade: true,
-    },
-    callback_url: `${process.env.NEXTAUTH_URL}/seller/events/${eventId}`,
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/events/${eventId}/activate/callback?reference=${reference}`,
   });
 
-  return { ok: true, data: { authorizationUrl: res.data.authorization_url } };
+  if (!res.ok) return { ok: false, error: "Failed to initialise payment. Please try again." };
+
+  return { ok: true, data: { authorizationUrl: res.url, invoiceId: res.invoiceId } };
 }
 
 export async function sellerRevokeOrder(

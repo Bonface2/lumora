@@ -6,9 +6,9 @@ import { db } from "@/lib/db";
 import {
   initializePayment,
   generateReference,
-  toKobo,
-} from "@/lib/paystack";
+} from "@/lib/intasend";
 import { sendTicketConfirmation, sendCartConfirmation, sendInstallmentReceipt, sendBookingConfirmation } from "@/lib/email";
+import { getPlatformConfig } from "@/lib/platformConfig";
 import type { ApiResponse } from "@/types";
 
 function generateTicketNumber(prefix: string): string {
@@ -66,7 +66,7 @@ export async function createOrder(input: {
 
   const totalAmount = Number(category.price) * quantity;
 
-  // Free event bypass — skip Paystack entirely
+  // Free event bypass — skip payment entirely
   if (totalAmount === 0) {
     const buyer = await db.user.findUniqueOrThrow({
       where: { id: session.user.id },
@@ -138,6 +138,11 @@ export async function createOrder(input: {
   const initialPercent = plan ? Number(plan.initialPaymentPercent) + pastDuePct : 100;
   const amountDueNow = Math.round((totalAmount * initialPercent) / 100);
 
+  const platformConfig = await getPlatformConfig();
+  const convenienceFee = platformConfig.convenienceFee;
+  const installmentFee = plan ? Math.round(totalAmount * (platformConfig.installmentFeePercent / 100)) : 0;
+  const chargeAmount = amountDueNow + convenienceFee + installmentFee;
+
   const reference = generateReference("LUM");
 
   const order = await db.$transaction(async (tx) => {
@@ -191,10 +196,10 @@ export async function createOrder(input: {
       });
     }
 
-    await tx.paystackTransaction.create({
+    await tx.paymentTransaction.create({
       data: {
         orderId: newOrder.id,
-        amount: amountDueNow,
+        amount: chargeAmount,
         reference,
         status: "pending",
         metadata: {
@@ -202,6 +207,9 @@ export async function createOrder(input: {
           ticketCategoryId: category.id,
           useInstallments: !!plan,
           paymentNumber: 0,
+          ticketAmount: amountDueNow,
+          convenienceFee,
+          installmentFee,
           ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}),
         },
       },
@@ -215,20 +223,24 @@ export async function createOrder(input: {
     select: { email: true },
   });
 
-  const paystack = await initializePayment({
+  const payment = await initializePayment({
     email: buyer.email,
-    amount: toKobo(amountDueNow),
+    amount: chargeAmount,
     reference,
-    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderId: order.id, paymentNumber: 0, ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}) },
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback?reference=${reference}`,
   });
 
-  if (!paystack.status) {
+  if (!payment.ok) {
     await db.order.delete({ where: { id: order.id } });
     return { ok: false, error: "Failed to initialise payment. Please try again." };
   }
 
-  return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+  await db.paymentTransaction.updateMany({
+    where: { reference },
+    data: { providerRef: payment.invoiceId },
+  });
+
+  return { ok: true, data: { paymentUrl: payment.url } };
 }
 
 export async function createCartOrder(input: {
@@ -283,7 +295,7 @@ export async function createCartOrder(input: {
   });
   const grandTotal = enriched.reduce((sum, i) => sum + i.totalAmount, 0);
 
-  // Free event bypass — skip Paystack entirely
+  // Free event bypass — skip payment entirely
   if (grandTotal === 0) {
     const buyer = await db.user.findUniqueOrThrow({
       where: { id: session.user.id },
@@ -395,7 +407,7 @@ export async function createCartOrder(input: {
       });
     }
 
-    await tx.paystackTransaction.create({
+    await tx.paymentTransaction.create({
       data: {
         orderId: ids[0],
         amount: grandTotal,
@@ -413,24 +425,28 @@ export async function createCartOrder(input: {
     select: { email: true },
   });
 
-  const paystack = await initializePayment({
+  const payment = await initializePayment({
     email: buyer.email,
-    amount: toKobo(grandTotal),
+    amount: grandTotal,
     reference,
-    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderIds, isCart: true, paymentNumber: 0, ...(input.inviteToken ? { inviteToken: input.inviteToken } : {}) },
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback?reference=${reference}`,
   });
 
-  if (!paystack.status) {
+  if (!payment.ok) {
     await db.$transaction(async (tx) => {
-      await tx.paystackTransaction.deleteMany({ where: { reference } });
+      await tx.paymentTransaction.deleteMany({ where: { reference } });
       await tx.installmentPayment.deleteMany({ where: { orderId: { in: orderIds } } });
       await tx.order.deleteMany({ where: { id: { in: orderIds } } });
     });
     return { ok: false, error: "Failed to initialise payment. Please try again." };
   }
 
-  return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+  await db.paymentTransaction.updateMany({
+    where: { reference },
+    data: { providerRef: payment.invoiceId },
+  });
+
+  return { ok: true, data: { paymentUrl: payment.url } };
 }
 
 export async function payInstallment(
@@ -481,11 +497,14 @@ export async function payInstallment(
 
   const reference = generateReference("LUM");
 
-  await db.paystackTransaction.create({
+  const { convenienceFee } = await getPlatformConfig();
+  const totalChargeAmount = chargeAmount + convenienceFee;
+
+  await db.paymentTransaction.create({
     data: {
       orderId: order.id,
       installmentPaymentId,
-      amount: chargeAmount,
+      amount: totalChargeAmount,
       reference,
       status: "pending",
       metadata: {
@@ -493,35 +512,41 @@ export async function payInstallment(
         paymentNumber: nextPayment.paymentNumber,
         paymentMode: mode,
         isFollowOn: true,
+        ticketAmount: chargeAmount,
+        convenienceFee,
       },
     },
   });
 
-  const paystack = await initializePayment({
+  const payment = await initializePayment({
     email: order.buyer.email,
-    amount: toKobo(chargeAmount),
+    amount: totalChargeAmount,
     reference,
-    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback`,
-    metadata: { orderId: order.id, paymentNumber: nextPayment.paymentNumber, paymentMode: mode },
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/callback?reference=${reference}`,
   });
 
-  if (!paystack.status) {
-    await db.paystackTransaction.delete({ where: { reference } });
+  if (!payment.ok) {
+    await db.paymentTransaction.delete({ where: { reference } });
     return { ok: false, error: "Failed to initialise payment. Please try again." };
   }
 
-  return { ok: true, data: { paymentUrl: paystack.data.authorization_url } };
+  await db.paymentTransaction.updateMany({
+    where: { reference },
+    data: { providerRef: payment.invoiceId },
+  });
+
+  return { ok: true, data: { paymentUrl: payment.url } };
 }
 
-// Fallback for when the Paystack webhook doesn't reach the server (e.g. local dev).
-// Called by the callback page after direct payment verification with Paystack.
+// Fallback for when the IntaSend webhook doesn't reach the server (e.g. local dev).
+// Called by the callback page after direct payment verification with IntaSend.
 // Uses the same idempotency guard as the webhook — safe to call even if the webhook also fires.
 export async function finalizeOrderFromCallback(
   reference: string,
   amountNaira: number
 ): Promise<ApiResponse<{ isPartial: boolean }>> {
   // Idempotency guard — only proceed if transaction is still pending
-  const claimed = await db.paystackTransaction.updateMany({
+  const claimed = await db.paymentTransaction.updateMany({
     where: { reference, status: "pending" },
     data: { status: "processing" },
   });
@@ -529,7 +554,7 @@ export async function finalizeOrderFromCallback(
     return { ok: true, data: { isPartial: false } }; // already handled by webhook
   }
 
-  const transaction = await db.paystackTransaction.findUnique({
+  const transaction = await db.paymentTransaction.findUnique({
     where: { reference },
     include: {
       order: {
@@ -556,16 +581,18 @@ export async function finalizeOrderFromCallback(
   const txMeta = transaction.metadata as Record<string, unknown> | null;
   const paymentMode = (txMeta?.paymentMode as string) ?? "installment";
   const isFollowOnPayment = !!transaction.installmentPaymentId || txMeta?.isFollowOn === true;
+  // Use only the ticket portion (excludes convenience fee and installment fee)
+  const ticketAmount = typeof txMeta?.ticketAmount === "number" ? txMeta.ticketAmount : amountNaira;
 
   await db.$transaction(async (tx) => {
-    await tx.paystackTransaction.update({ where: { reference }, data: { status: "success" } });
+    await tx.paymentTransaction.update({ where: { reference }, data: { status: "success" } });
 
     if (paymentMode === "complete") {
       for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && (p.status === "PENDING" || p.status === "OVERDUE"))) {
         await tx.installmentPayment.update({ where: { id: payment.id }, data: { status: "PAID", paidAt: new Date(), paidAmount: payment.amount } });
       }
     } else if (paymentMode === "custom") {
-      let remaining = amountNaira;
+      let remaining = ticketAmount;
       for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING")) {
         const stillOwed = Number(payment.amount) - Number(payment.paidAmount);
         if (remaining >= stillOwed - 0.01) {
@@ -587,7 +614,7 @@ export async function finalizeOrderFromCallback(
       }
     }
 
-    const newPaidAmount = Number(order.paidAmount) + amountNaira;
+    const newPaidAmount = Number(order.paidAmount) + ticketAmount;
     const isFullyPaid = newPaidAmount >= Number(order.totalAmount) - 0.01;
 
     await tx.order.update({ where: { id: order.id }, data: { paidAmount: newPaidAmount, status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" } });

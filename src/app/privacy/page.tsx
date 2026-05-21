@@ -98,7 +98,7 @@ export default function PrivacyPage() {
             <p className="font-semibold text-gray-700">Information you provide directly</p>
             <ul className="mt-2 space-y-2">
               <Bullet><strong className="text-gray-800">Account information</strong> — name, email address, phone number, and password when you register.</Bullet>
-              <Bullet><strong className="text-gray-800">Payment information</strong> — card details and mobile money numbers. These are processed directly by Paystack and are not stored on Lumora servers.</Bullet>
+              <Bullet><strong className="text-gray-800">Payment information</strong> — card details and mobile money numbers. These are processed directly by IntaSend and are not stored on Lumora servers.</Bullet>
               <Bullet><strong className="text-gray-800">Event / listing information</strong> — event descriptions, images, pricing, and venue details provided by Sellers.</Bullet>
               <Bullet><strong className="text-gray-800">Communications</strong> — messages you send us via email or the contact form.</Bullet>
             </ul>
@@ -139,7 +139,7 @@ export default function PrivacyPage() {
         <Section number="05" title="Sharing Your Information">
           <p>We do not sell your personal data. We may share it with:</p>
           <ul className="mt-1 space-y-2">
-            <Bullet><strong className="text-gray-800">Paystack</strong> — to process payments. Paystack's privacy policy governs data they handle.</Bullet>
+            <Bullet><strong className="text-gray-800">IntaSend</strong> — to process payments. IntaSend's privacy policy governs data they handle.</Bullet>
             <Bullet><strong className="text-gray-800">Email service providers</strong> — to send transactional and marketing emails on our behalf.</Bullet>
             <Bullet><strong className="text-gray-800">Cloud infrastructure providers</strong> — for hosting and storage.</Bullet>
             <Bullet><strong className="text-gray-800">Event Sellers</strong> — your name and contact details are shared with the Seller for events you purchase tickets to, solely for event management purposes.</Bullet>

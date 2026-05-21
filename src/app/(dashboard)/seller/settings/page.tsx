@@ -5,23 +5,22 @@ import { Button } from "@/components/ui/Button";
 import {
   getPayoutMethods,
   fetchBanks,
-  verifyAccountNumber,
   savePayoutMethod,
   updatePayoutMethod,
   deletePayoutMethod,
   type PayoutMethodData,
 } from "@/app/actions/payout";
-import type { PaystackBank } from "@/lib/paystack";
+import type { IntaSendBank } from "@/lib/intasend";
 
-type Step = "idle" | "verifying" | "verified" | "manual" | "saving";
+type Step = "idle" | "saving";
 const MOBILE_MONEY_TYPES = new Set(["mobile_money", "mobile_money_business"]);
 
 function accountDisplay(m: PayoutMethodData) {
   if (m.bankType === "mobile_money_business") {
-    return `Paybill: ${m.paystackAccountNumber}${m.paystackAccountName ? ` · Acc: ${m.paystackAccountName}` : ""}`;
+    return `Paybill: ${m.accountNumber}${m.accountName ? ` · Acc: ${m.accountName}` : ""}`;
   }
-  if (m.bankType === "mobile_money") return m.paystackAccountNumber;
-  return `****${m.paystackAccountNumber.slice(-4)}${m.paystackAccountName ? ` · ${m.paystackAccountName}` : ""}`;
+  if (m.bankType === "mobile_money") return m.accountNumber;
+  return `****${m.accountNumber.slice(-4)}${m.accountName ? ` · ${m.accountName}` : ""}`;
 }
 
 function BankIcon({ className }: { className?: string }) {
@@ -40,8 +39,7 @@ interface FormState {
   bankType: string;
   accountNumber: string;
   paybillAccount: string;
-  resolvedName: string;
-  manualName: string;
+  accountName: string;
   step: Step;
   error: string;
 }
@@ -54,8 +52,7 @@ const BLANK_FORM: FormState = {
   bankType: "",
   accountNumber: "",
   paybillAccount: "",
-  resolvedName: "",
-  manualName: "",
+  accountName: "",
   step: "idle",
   error: "",
 };
@@ -65,7 +62,7 @@ const inputClass =
 
 export default function PayoutSettingsPage() {
   const [methods, setMethods] = useState<PayoutMethodData[]>([]);
-  const [banks, setBanks] = useState<PaystackBank[]>([]);
+  const [banks, setBanks] = useState<IntaSendBank[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -74,6 +71,7 @@ export default function PayoutSettingsPage() {
 
   const isMobileMoney = MOBILE_MONEY_TYPES.has(form.bankType);
   const isPaybill = form.bankCode === "MPPAYBILL";
+  const isBank = !!form.bankCode && !isMobileMoney;
 
   useEffect(() => {
     getPayoutMethods().then(setMethods);
@@ -90,14 +88,13 @@ export default function PayoutSettingsPage() {
     setForm({
       editingId: m.id,
       label: m.label ?? "",
-      bankCode: m.paystackBankCode,
-      bankName: m.paystackBankName,
+      bankCode: m.bankCode,
+      bankName: m.bankName,
       bankType: m.bankType,
-      accountNumber: m.paystackAccountNumber,
-      paybillAccount: m.bankType === "mobile_money_business" ? (m.paystackAccountName ?? "") : "",
-      resolvedName: m.bankType !== "mobile_money" && m.bankType !== "mobile_money_business"
-        ? (m.paystackAccountName ?? "") : "",
-      manualName: "",
+      accountNumber: m.accountNumber,
+      paybillAccount: m.bankType === "mobile_money_business" ? (m.accountName ?? "") : "",
+      accountName: m.bankType !== "mobile_money" && m.bankType !== "mobile_money_business"
+        ? (m.accountName ?? "") : "",
       step: "idle",
       error: "",
     });
@@ -116,26 +113,22 @@ export default function PayoutSettingsPage() {
 
   function handleBankChange(code: string) {
     const b = banks.find((b) => b.code === code);
-    patch({ bankCode: code, bankName: b?.name ?? "", bankType: b?.type ?? "", accountNumber: "", paybillAccount: "", resolvedName: "", manualName: "", step: "idle", error: "" });
-  }
-
-  async function handleVerify() {
-    patch({ error: "", resolvedName: "", manualName: "", step: "verifying" });
-    const res = await verifyAccountNumber(form.accountNumber, form.bankCode);
-    if (!res.ok) {
-      const isRateLimit = res.error.toLowerCase().includes("too many");
-      patch({ error: res.error, step: isRateLimit ? "idle" : "manual" });
-      return;
-    }
-    patch({ resolvedName: res.data.accountName, step: "verified" });
+    patch({
+      bankCode: code,
+      bankName: b?.name ?? "",
+      bankType: b?.type ?? "",
+      accountNumber: "",
+      paybillAccount: "",
+      accountName: "",
+      step: "idle",
+      error: "",
+    });
   }
 
   async function handleSave() {
     patch({ error: "", step: "saving" });
     const selected = banks.find((b) => b.code === form.bankCode);
-    const effectiveAccountName = isPaybill
-      ? form.paybillAccount
-      : form.resolvedName || form.manualName;
+    const effectiveAccountName = isPaybill ? form.paybillAccount : form.accountName;
     const payload = {
       label: form.label || undefined,
       bankCode: form.bankCode,
@@ -150,8 +143,7 @@ export default function PayoutSettingsPage() {
       : await savePayoutMethod(payload);
 
     if (!res.ok) {
-      const fallbackStep = isMobileMoney ? "idle" : (form.resolvedName ? "verified" : "manual");
-      patch({ error: res.error, step: fallbackStep });
+      patch({ error: res.error, step: "idle" });
       return;
     }
 
@@ -175,7 +167,9 @@ export default function PayoutSettingsPage() {
     ? form.accountNumber.length >= 4 && form.paybillAccount.length >= 1
     : isMobileMoney
     ? !!form.bankCode && form.accountNumber.length >= 9
-    : !!form.resolvedName || (form.step === "manual" && form.manualName.trim().length >= 2);
+    : isBank
+    ? form.accountNumber.length >= 6 && form.accountName.trim().length >= 2
+    : false;
 
   return (
     <div className="min-h-full bg-gray-50">
@@ -259,7 +253,7 @@ export default function PayoutSettingsPage() {
                 {/* Details */}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-gray-900">{m.paystackBankName}</span>
+                    <span className="font-bold text-gray-900">{m.bankName}</span>
                     {m.label && (
                       <span className="rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
                         {m.label}
@@ -380,7 +374,7 @@ export default function PayoutSettingsPage() {
                         type="text"
                         inputMode="numeric"
                         value={form.accountNumber}
-                        onChange={(e) => patch({ accountNumber: e.target.value, step: "idle", error: "" })}
+                        onChange={(e) => patch({ accountNumber: e.target.value, error: "" })}
                         placeholder="e.g. 123456"
                         className={inputClass}
                       />
@@ -405,7 +399,7 @@ export default function PayoutSettingsPage() {
                       type="tel"
                       inputMode="numeric"
                       value={form.accountNumber}
-                      onChange={(e) => patch({ accountNumber: e.target.value, step: "idle", error: "" })}
+                      onChange={(e) => patch({ accountNumber: e.target.value, error: "" })}
                       placeholder={form.bankType === "mobile_money_business" ? "e.g. 123456" : "e.g. 0712345678"}
                       className={inputClass}
                     />
@@ -414,76 +408,38 @@ export default function PayoutSettingsPage() {
                     </p>
                   </div>
                 ) : (
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Account number</label>
-                    <div className="flex gap-2">
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">Account number</label>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={form.accountNumber}
-                        onChange={(e) => patch({ accountNumber: e.target.value, resolvedName: "", manualName: "", step: "idle", error: "" })}
+                        onChange={(e) => patch({ accountNumber: e.target.value, accountName: "", error: "" })}
                         placeholder="e.g. 1234567890"
-                        className={`${inputClass} flex-1`}
+                        className={inputClass}
                       />
-                      <Button
-                        onClick={handleVerify}
-                        loading={form.step === "verifying"}
-                        disabled={form.accountNumber.length < 6}
-                        size="sm"
-                      >
-                        Verify
-                      </Button>
                     </div>
-                  </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                        Account name <span className="font-normal text-gray-400">(as it appears on your bank statement)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={form.accountName}
+                        onChange={(e) => patch({ accountName: e.target.value })}
+                        placeholder="e.g. JOHN KAMAU MWANGI"
+                        className={inputClass}
+                      />
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        Double-check the name — payouts sent to the wrong account cannot be reversed.
+                      </p>
+                    </div>
+                  </>
                 )
               )}
 
-              {form.resolvedName && (
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-                    <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-emerald-600">Account verified</p>
-                    <p className="text-sm font-bold text-gray-900">{form.resolvedName}</p>
-                  </div>
-                </div>
-              )}
-
-              {form.step === "manual" && (
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-semibold text-amber-800">
-                        {form.error || "Automatic verification unavailable for this bank."}
-                      </p>
-                      <p className="mt-0.5 text-xs text-amber-700">
-                        Enter your account name manually. Double-check it — payouts sent to the wrong account cannot be reversed.
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                      Account name <span className="font-normal text-gray-400">(as it appears on your bank statement)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={form.manualName}
-                      onChange={(e) => patch({ manualName: e.target.value })}
-                      placeholder="e.g. JOHN KAMAU MWANGI"
-                      className={inputClass}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-              )}
-
-              {form.error && form.step !== "manual" && (
+              {form.error && (
                 <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
                   <svg className="mt-0.5 h-4 w-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />

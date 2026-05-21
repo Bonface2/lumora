@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { verifyPayment } from "@/lib/paystack";
+import { verifyPayment } from "@/lib/intasend";
+import { db } from "@/lib/db";
 import Link from "next/link";
 
 export default async function ActivateCallbackPage({
@@ -7,18 +8,29 @@ export default async function ActivateCallbackPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ reference?: string; trxref?: string }>;
+  searchParams: Promise<{ reference?: string; invoice_id?: string }>;
 }) {
   const { id } = await params;
-  const { reference, trxref } = await searchParams;
-  const ref = reference ?? trxref;
+  const { reference, invoice_id } = await searchParams;
 
-  if (!ref) redirect(`/seller/events/${id}`);
+  if (!reference) redirect(`/seller/events/${id}`);
+
+  // IntaSend appends invoice_id to the redirect URL; fall back to DB lookup.
+  let invoiceId = invoice_id;
+  if (!invoiceId) {
+    const txn = await db.paymentTransaction.findFirst({
+      where: { reference },
+      select: { providerRef: true },
+    });
+    invoiceId = txn?.providerRef ?? undefined;
+  }
 
   let verified = false;
   try {
-    const result = await verifyPayment(ref);
-    verified = result.data.status === "success";
+    if (invoiceId) {
+      const result = await verifyPayment(invoiceId);
+      verified = result.verified;
+    }
   } catch {
     verified = false;
   }

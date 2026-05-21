@@ -64,7 +64,7 @@ export function Footer() {
           </p>
           <p className="text-xs text-gray-500">
             Payments powered by{" "}
-            <span className="font-semibold text-gray-400">Paystack</span>
+            <span className="font-semibold text-gray-400">IntaSend</span>
           </p>
         </div>
       </div>

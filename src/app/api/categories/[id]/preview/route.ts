@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPlatformConfig } from "@/lib/platformConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -9,15 +10,18 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const category = await db.ticketCategory.findUnique({
-    where: { id },
-    include: {
-      event: true,
-      installmentPlan: {
-        include: { scheduleItems: { orderBy: { installmentNumber: "asc" } } },
+  const [category, config] = await Promise.all([
+    db.ticketCategory.findUnique({
+      where: { id },
+      include: {
+        event: true,
+        installmentPlan: {
+          include: { scheduleItems: { orderBy: { installmentNumber: "asc" } } },
+        },
       },
-    },
-  });
+    }),
+    getPlatformConfig(),
+  ]);
 
   if (!category) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -42,6 +46,8 @@ export async function GET(
     coverImage: category.event.coverImage,
     eventSlug: category.event.slug,
     allowInstallments: category.allowInstallments,
+    convenienceFee: Number(category.price) === 0 ? 0 : config.convenienceFee,
+    installmentFeePercent: config.installmentFeePercent,
     installmentPlan: plan
       ? {
           initialPaymentPercent: effectiveInitialPercent,

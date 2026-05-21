@@ -393,7 +393,7 @@ export default async function TermsPage() {
         </Section>
 
         <Section number="11" title="Payments & Payouts">
-          <p>Payment processing is handled by <strong className="text-gray-800">Paystack</strong>. By using the Platform you agree to Paystack's terms of service. Seller payouts are processed after event completion, subject to any applicable holds for disputes or chargebacks. Lumora reserves the right to withhold payouts pending resolution of a dispute.</p>
+          <p>Payment processing is handled by <strong className="text-gray-800">IntaSend</strong>. By using the Platform you agree to IntaSend&apos;s terms of service. Seller payouts are processed after event completion, subject to any applicable holds for disputes or chargebacks. Lumora reserves the right to withhold payouts pending resolution of a dispute.</p>
         </Section>
 
         <Section number="12" title="Prohibited Conduct">

@@ -21,16 +21,13 @@ const mocks = vi.hoisted(() => ({
   },
   initializePayment: vi.fn(),
   generateReference: vi.fn(),
-  toKobo: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
-vi.mock("@/lib/paystack", () => ({
+vi.mock("@/lib/intasend", () => ({
   initializePayment: mocks.initializePayment,
   generateReference: mocks.generateReference,
-  toKobo: mocks.toKobo,
-  PLATFORM_FEE_PERCENT: 6,
 }));
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -143,8 +140,9 @@ describe("initiateEventActivationFee", () => {
     vi.clearAllMocks();
     mocks.generateReference.mockReturnValue("ref_act_001");
     mocks.initializePayment.mockResolvedValue({
-      status: true,
-      data: { authorization_url: "https://paystack.com/pay/act123" },
+      ok: true,
+      url: "https://sandbox.intasend.com/pay/act123",
+      invoiceId: "inv_act123",
     });
   });
 
@@ -196,37 +194,25 @@ describe("initiateEventActivationFee", () => {
     expect(result).toEqual({ ok: false, error: "Invalid tier selected." });
   });
 
-  it("charges tier.price in smallest currency unit (kobo)", async () => {
+  it("charges tier.price in KES", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(makeEvent({ eventType: "FREE" }));
     mocks.db.platformFeeTier.findUnique.mockResolvedValue(makeTier({ price: 2000 }));
     await initiateEventActivationFee("event1", "tier1");
     expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 200000 }) // 2000 * 100
+      expect.objectContaining({ amount: 2000 })
     );
   });
 
-  it("returns authorization URL on success", async () => {
+  it("returns authorization URL and invoice ID on success", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(makeEvent({ eventType: "FREE" }));
     mocks.db.platformFeeTier.findUnique.mockResolvedValue(makeTier());
     const result = await initiateEventActivationFee("event1", "tier1");
     expect(result).toEqual({
       ok: true,
-      data: { authorizationUrl: "https://paystack.com/pay/act123" },
+      data: { authorizationUrl: "https://sandbox.intasend.com/pay/act123", invoiceId: "inv_act123" },
     });
-  });
-
-  it("passes tierCap and tierPrice in Paystack metadata", async () => {
-    mocks.auth.mockResolvedValue(SELLER_SESSION);
-    mocks.db.event.findFirst.mockResolvedValue(makeEvent({ eventType: "FREE" }));
-    mocks.db.platformFeeTier.findUnique.mockResolvedValue(makeTier({ price: 3000, maxCap: 100 }));
-    await initiateEventActivationFee("event1", "tier1");
-    expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ tierCap: 100, tierPrice: 3000 }),
-      })
-    );
   });
 });
 
@@ -237,8 +223,9 @@ describe("initiateEventTierUpgrade", () => {
     vi.clearAllMocks();
     mocks.generateReference.mockReturnValue("ref_upg_001");
     mocks.initializePayment.mockResolvedValue({
-      status: true,
-      data: { authorization_url: "https://paystack.com/pay/upg456" },
+      ok: true,
+      url: "https://sandbox.intasend.com/pay/upg456",
+      invoiceId: "inv_upg456",
     });
   });
 
@@ -294,20 +281,20 @@ describe("initiateEventTierUpgrade", () => {
     expect(result).toEqual({ ok: false, error: "You are already on this tier or higher." });
   });
 
-  it("charges only the difference between tiers", async () => {
+  it("charges only the difference between tiers in KES", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(
       makeEvent({ eventType: "FREE", platformFeePaid: true, platformFeeAmount: 1000 })
     );
     mocks.db.platformFeeTier.findUnique.mockResolvedValue(makeTier({ price: 3000, maxCap: 100 }));
     await initiateEventTierUpgrade("event1", "tier2");
-    // 3000 - 1000 = 2000, in smallest unit = 200000
+    // 3000 - 1000 = 2000 KES
     expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 200000 })
+      expect.objectContaining({ amount: 2000 })
     );
   });
 
-  it("returns authorization URL on success", async () => {
+  it("returns authorization URL and invoice ID on success", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(
       makeEvent({ eventType: "FREE", platformFeePaid: true, platformFeeAmount: 1000 })
@@ -316,21 +303,17 @@ describe("initiateEventTierUpgrade", () => {
     const result = await initiateEventTierUpgrade("event1", "tier2");
     expect(result).toEqual({
       ok: true,
-      data: { authorizationUrl: "https://paystack.com/pay/upg456" },
+      data: { authorizationUrl: "https://sandbox.intasend.com/pay/upg456", invoiceId: "inv_upg456" },
     });
   });
 
-  it("marks the payment as an upgrade in Paystack metadata", async () => {
+  it("marks the payment as an upgrade via the reference prefix", async () => {
     mocks.auth.mockResolvedValue(SELLER_SESSION);
     mocks.db.event.findFirst.mockResolvedValue(
       makeEvent({ eventType: "FREE", platformFeePaid: true, platformFeeAmount: 1000 })
     );
     mocks.db.platformFeeTier.findUnique.mockResolvedValue(makeTier({ price: 2000 }));
     await initiateEventTierUpgrade("event1", "tier2");
-    expect(mocks.initializePayment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ isUpgrade: true }),
-      })
-    );
+    expect(mocks.generateReference).toHaveBeenCalledWith("UPG");
   });
 });

@@ -17,7 +17,7 @@ export function getRemainingBalance(
 // ─── Pay Balance in Full ──────────────────────────────────────────────────────
 
 /**
- * Called after Paystack confirms a "pay in full" transaction.
+ * Called after IntaSend confirms a "pay in full" transaction.
  * Marks all outstanding installments as paid and promotes the order to
  * PAID_IN_FULL, then cancels any queued reminders and revocation jobs.
  */

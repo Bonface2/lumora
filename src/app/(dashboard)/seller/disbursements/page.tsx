@@ -132,9 +132,9 @@ export default async function DisbursementsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                   <span>
-                    <span className="font-semibold">{primaryMethod.paystackBankName}</span>
+                    <span className="font-semibold">{primaryMethod.bankName}</span>
                     {" · "}
-                    <AccountDisplay bankType={primaryMethod.bankType} accountNumber={primaryMethod.paystackAccountNumber} />
+                    <AccountDisplay bankType={primaryMethod.bankType} accountNumber={primaryMethod.accountNumber} />
                     {primaryMethod.label && <span className="ml-1.5 text-gray-400">({primaryMethod.label})</span>}
                   </span>
                 </div>
@@ -185,11 +185,11 @@ export default async function DisbursementsPage() {
                       <td className="px-5 py-4 text-gray-600">
                         {p.payoutMethod ? (
                           <>
-                            <span className="font-medium">{p.payoutMethod.paystackBankName}</span>
+                            <span className="font-medium">{p.payoutMethod.bankName}</span>
                             {" · "}
                             <AccountDisplay
                               bankType={p.payoutMethod.bankType}
-                              accountNumber={p.payoutMethod.paystackAccountNumber}
+                              accountNumber={p.payoutMethod.accountNumber}
                             />
                           </>
                         ) : (

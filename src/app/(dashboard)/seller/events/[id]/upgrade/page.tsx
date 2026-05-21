@@ -75,7 +75,7 @@ export default async function UpgradeEventPage({
         />
 
         <p className="mt-4 text-xs text-gray-400">
-          You will be redirected to Paystack. Once payment is confirmed, your new capacity limit takes effect immediately.
+          You will be redirected to IntaSend. Once payment is confirmed, your new capacity limit takes effect immediately.
         </p>
       </div>
     </div>

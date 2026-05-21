@@ -175,7 +175,7 @@ export default async function AnalyticsPage({
     where: { sellerId: session!.user.id },
     include: {
       payoutMethod: {
-        select: { paystackBankName: true, bankType: true, paystackAccountNumber: true, label: true },
+        select: { bankName: true, bankType: true, accountNumber: true, label: true },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -372,7 +372,7 @@ export default async function AnalyticsPage({
                   {payouts.map((p) => {
                     const isMobile = p.payoutMethod ? MOBILE_TYPES.has(p.payoutMethod.bankType) : false;
                     const accountStr = p.payoutMethod
-                      ? `${p.payoutMethod.paystackBankName}${p.payoutMethod.label ? ` · ${p.payoutMethod.label}` : ""} — ${isMobile ? p.payoutMethod.paystackAccountNumber : `****${p.payoutMethod.paystackAccountNumber.slice(-4)}`}`
+                      ? `${p.payoutMethod.bankName}${p.payoutMethod.label ? ` · ${p.payoutMethod.label}` : ""} — ${isMobile ? p.payoutMethod.accountNumber : `****${p.payoutMethod.accountNumber.slice(-4)}`}`
                       : "—";
                     return (
                       <tr key={p.id} className="hover:bg-gray-50 transition-colors">
