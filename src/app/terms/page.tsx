@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Terms of Service" };
 
-const LAST_UPDATED = "11 May 2026";
+const LAST_UPDATED = "21 May 2026";
 
 function Section({
   number,
@@ -56,7 +56,14 @@ function SubBullet({ children }: { children: React.ReactNode }) {
 }
 
 export default async function TermsPage() {
-  const { groupTripAutoApproveCap: cap } = await getPlatformConfig();
+  const {
+    groupTripAutoApproveCap: cap,
+    groupTripFlatFee,
+    convenienceFee,
+    installmentFeePercent,
+    installmentFeeCap,
+    transferFee,
+  } = await getPlatformConfig();
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -127,7 +134,13 @@ export default async function TermsPage() {
           <ul className="mt-1 space-y-2">
             <Bullet>Tickets are confirmed only upon successful payment or first installment.</Bullet>
             <Bullet>Prices are displayed in Kenyan Shillings (KES) unless otherwise stated.</Bullet>
-            <Bullet>Lumora reserves the right to charge a service fee on each transaction.</Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Processing fee.</strong> A flat processing fee of{" "}
+              <strong className="text-gray-800">KES {convenienceFee.toLocaleString()}</strong> is charged
+              per paid transaction at checkout, in addition to the ticket price. This fee is non-refundable
+              and does not form part of the Seller&apos;s payout. The current rate is shown at checkout
+              before payment is confirmed. Free tickets are not subject to this fee.
+            </Bullet>
           </ul>
         </Section>
 
@@ -146,6 +159,30 @@ export default async function TermsPage() {
             </Bullet>
             <Bullet><strong className="text-gray-800">All payments already made under an Installment Plan are non-refundable upon cancellation due to default.</strong></Bullet>
             <Bullet>Lumora is not liable for failed or delayed payment reminders caused by incorrect email addresses or spam filters.</Bullet>
+          </ul>
+          <p className="mt-3 font-semibold text-gray-800">Installment plan fee</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              When a Buyer checks out using an installment plan, a one-time installment fee is charged
+              at the time of the <strong className="text-gray-800">initial (deposit) payment</strong>,
+              in addition to the deposit amount and the standard processing fee.
+            </Bullet>
+            <Bullet>
+              The fee is calculated as{" "}
+              <strong className="text-gray-800">{installmentFeePercent}% of the total ticket price</strong>,
+              capped at a maximum of{" "}
+              <strong className="text-gray-800">KES {installmentFeeCap.toLocaleString()}</strong>{" "}
+              regardless of the ticket price. The current rate and cap are shown at checkout before
+              payment is confirmed.
+            </Bullet>
+            <Bullet>
+              The installment fee is <strong className="text-gray-800">non-refundable</strong> and is
+              charged once only — no additional fee is levied on subsequent installment payments.
+            </Bullet>
+            <Bullet>
+              The installment fee does not form part of the Seller&apos;s payout. It is a Platform charge
+              for the administration of the payment schedule.
+            </Bullet>
           </ul>
           <p className="mt-3 font-semibold text-gray-800">Grace period hard cap</p>
           <ul className="mt-1 space-y-2">
@@ -223,7 +260,18 @@ export default async function TermsPage() {
           </p>
           <ul className="mt-1 space-y-2">
             <Bullet>
+              <strong className="text-gray-800">Eligible events.</strong> Transfers are only available for tickets to <strong className="text-gray-800">Public Events</strong>. Tickets for Invite-Only Events and Group Trips cannot be transferred.
+            </Bullet>
+            <Bullet>
               <strong className="text-gray-800">How it works.</strong> The current ticket holder initiates a transfer from their buyer dashboard by entering the recipient&apos;s email address. Lumora sends the recipient an invitation link. The recipient must accept or decline within <strong className="text-gray-800">24 hours</strong>; if no action is taken the invitation expires automatically.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Transfer fee.</strong> A flat transfer fee of{" "}
+              <strong className="text-gray-800">KES {transferFee.toLocaleString()}</strong> is charged
+              per transfer. By default this fee is payable by the <strong className="text-gray-800">recipient</strong>{" "}
+              upon acceptance. The sender may choose, at the time of initiating the transfer, to cover
+              this fee themselves — in which case the recipient pays nothing on acceptance. The current
+              fee is shown to both parties before the transfer is confirmed.
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">Unregistered recipients.</strong> If the recipient does not yet have a Lumora account, they will be prompted to register before accepting. The invitation link remains valid for the 24-hour window.
@@ -238,13 +286,22 @@ export default async function TermsPage() {
               <strong className="text-gray-800">Installment responsibility.</strong> The recipient who accepts a transfer of a payment schedule assumes full liability for all outstanding installments from the date of transfer. Missed payments after transfer are subject to the same grace period and revocation rules as set out in Section 05.
             </Bullet>
             <Bullet>
-              <strong className="text-gray-800">Defaulted installments on transfer.</strong> If any installment payments on the order are in <em>defaulted</em> status at the time of transfer, the recipient must pay the full outstanding defaulted amount immediately upon accepting the transfer. The Platform will present a payment screen before completing the ownership change. The recipient will be clearly informed of the amount due before accepting. Subsequent installments on the original schedule continue normally after the defaulted amount is cleared.
+              <strong className="text-gray-800">Overdue or defaulted installments on transfer.</strong> If any installment payments on the order are overdue or in defaulted status at the time of transfer, one of the following applies:
+              <ul className="mt-1.5 ml-4 space-y-1.5">
+                <SubBullet>
+                  <strong className="text-red-700">Recipient clears arrears:</strong> The recipient must pay the full outstanding overdue amount immediately upon accepting the transfer, in addition to the transfer fee. A payment screen is presented before ownership changes hands. Subsequent installments on the original schedule continue normally once the overdue amount is cleared.
+                </SubBullet>
+                <SubBullet>
+                  <strong className="text-gray-800">Sender clears arrears:</strong> The sender may optionally pay all outstanding overdue installments before sending the invitation. In this case the recipient inherits a clean payment schedule and is not required to pay the overdue amount on acceptance.
+                </SubBullet>
+              </ul>
+              The recipient will be clearly informed of any amount due — and what has already been settled — before they accept.
             </Bullet>
             <Bullet>
-              <strong className="text-gray-800">One pending transfer at a time.</strong> Only one transfer invitation may be active per order at any given time. The sender may cancel a pending invitation before it is accepted.
+              <strong className="text-gray-800">One pending transfer at a time.</strong> Only one transfer invitation may be active per order at any given time. The sender may cancel a pending invitation before it is accepted. When a transfer is cancelled, the recipient is notified by email and the invitation link becomes invalid.
             </Bullet>
             <Bullet>
-              <strong className="text-gray-800">Non-transferable orders.</strong> Transfers are not permitted for orders with status Revoked, Cancelled, or Defaulted.
+              <strong className="text-gray-800">Non-transferable orders.</strong> Transfers are not permitted for orders with status Revoked, Cancelled, or Defaulted, nor for tickets on Invite-Only or Group Trip events.
             </Bullet>
             <Bullet>
               Lumora is not responsible for transfers made in error. Completed transfers are final and cannot be reversed through the Platform.
@@ -307,7 +364,7 @@ export default async function TermsPage() {
           </p>
           <ul className="mt-1 space-y-2">
             <Bullet>Group Trips are <strong className="text-gray-800">always private</strong>. They are never publicly listed or discoverable on the marketplace.</Bullet>
-            <Bullet>Group Trips are subject to a flat platform fee rather than a percentage-based fee, reflecting their non-commercial nature.</Bullet>
+            <Bullet>Group Trips are subject to a one-time listing fee of <strong className="text-gray-800">KES {groupTripFlatFee.toLocaleString()} per declared participant</strong>, paid upfront before publishing. There is no per-booking deduction on participant payments.</Bullet>
             <Bullet>
               Group Trips are subject to <strong className="text-gray-800">additional specific rules</strong> set out in full in Section 10. These rules exist to prevent misuse of the reduced fee structure by commercial tour operators and travel businesses.
             </Bullet>
@@ -331,6 +388,20 @@ export default async function TermsPage() {
             </Bullet>
             <Bullet>
               <strong className="text-gray-800">Organiser declaration.</strong> When creating a Group Trip, the organiser must confirm by checkbox that the trip is a genuine social group trip and that they are not running a commercial tour or travel business. This declaration constitutes a binding legal representation. Providing a false declaration is a serious breach of these Terms and may expose the organiser to civil and criminal liability.
+            </Bullet>
+          </ul>
+
+          <p className="mt-4 font-semibold text-gray-800">Listing fee</p>
+          <ul className="mt-1 space-y-2">
+            <Bullet>
+              <strong className="text-gray-800">Upfront payment required.</strong> Before a Group Trip may be published, the organiser must pay a one-time listing fee of{" "}
+              <strong className="text-gray-800">KES {groupTripFlatFee.toLocaleString()} per declared participant</strong>. For example, a declared group of 20 people would incur a listing fee of KES {(20 * groupTripFlatFee).toLocaleString()}.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">No per-booking deduction.</strong> Once the listing fee is paid, all participant payments flow entirely to the organiser — there is no further platform deduction on individual bookings.
+            </Bullet>
+            <Bullet>
+              <strong className="text-gray-800">Non-refundable.</strong> The listing fee is non-refundable, including if the organiser cancels the trip after publishing.
             </Bullet>
           </ul>
 
@@ -393,7 +464,12 @@ export default async function TermsPage() {
         </Section>
 
         <Section number="11" title="Payments & Payouts">
-          <p>Payment processing is handled by <strong className="text-gray-800">IntaSend</strong>. By using the Platform you agree to IntaSend&apos;s terms of service. Seller payouts are processed after event completion, subject to any applicable holds for disputes or chargebacks. Lumora reserves the right to withhold payouts pending resolution of a dispute.</p>
+          <p>Payment processing is handled by <strong className="text-gray-800">IntaSend</strong>. By using the Platform you agree to IntaSend&apos;s terms of service. Sellers may request a disbursement of their outstanding balance at any time from their seller dashboard. Disbursements are subject to any applicable holds for disputes or chargebacks. Lumora reserves the right to withhold payouts pending resolution of a dispute.</p>
+          <p className="mt-2">
+            A full summary of all current Platform fees — for both Sellers and Buyers — is maintained on the{" "}
+            <Link href="/pricing" className="font-medium text-primary-600 hover:underline">Pricing page</Link>.
+            Fees shown in these Terms reflect the current configured rates; the Pricing page is the canonical reference and is always up to date.
+          </p>
         </Section>
 
         <Section number="12" title="Prohibited Conduct">

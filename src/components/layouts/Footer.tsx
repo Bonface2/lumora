@@ -2,10 +2,11 @@ import Link from "next/link";
 
 const LINKS = [
   {
-    heading: "Support",
+    heading: "Platform",
     items: [
-      { label: "Contact us", href: "/contact" },
+      { label: "Pricing", href: "/pricing" },
       { label: "FAQ", href: "/faq" },
+      { label: "Contact us", href: "/contact" },
     ],
   },
   {

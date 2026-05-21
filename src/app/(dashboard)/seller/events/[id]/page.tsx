@@ -231,6 +231,28 @@ export default async function SellerEventDetailPage({
         </div>
       </div>
 
+      {/* ── GROUP_TRIP listing fee prompt ── */}
+      {event.experienceType === "GROUP_TRIP" && !event.platformFeePaid && event.status === "DRAFT" && (
+        <div className="mx-8 mt-6 flex items-start gap-3 rounded-2xl border border-primary-200 bg-primary-50 px-5 py-4">
+          <svg className="mt-0.5 h-5 w-5 shrink-0 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-primary-800 text-sm">Pay listing fee to publish</p>
+            <p className="mt-0.5 text-xs text-primary-700">
+              A one-time listing fee of{" "}
+              <strong>KES {((event.groupTripCapacity ?? 0) * platformConfig.groupTripFlatFee).toLocaleString()}</strong>{" "}
+              ({event.groupTripCapacity} participants × KES {platformConfig.groupTripFlatFee.toLocaleString()}) is required before you can publish this group trip.
+            </p>
+            <a href={`/seller/events/${id}/activate`} className="mt-2 inline-block">
+              <button className="rounded-lg bg-primary-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-primary-700 transition-colors">
+                Pay listing fee
+              </button>
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* ── PENDING_REVIEW notice for group trips ── */}
       {event.status === "PENDING_REVIEW" && (
         <div className="mx-8 mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">

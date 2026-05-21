@@ -162,7 +162,7 @@ model Event {
   isPrivate          Boolean        @default(false)
   platformFeePaid    Boolean     @default(false)
   platformFeePercent Decimal?    @db.Decimal(5, 2)
-  platformFlatFee    Decimal?    @db.Decimal(10, 2) // per-event override for GROUP_TRIP flat fee
+  platformFlatFee    Decimal?    @db.Decimal(10, 2) // per-participant fee override for GROUP_TRIP (replaces groupTripFlatFee default)
   platformFeeAmount  Decimal?    @db.Decimal(10, 2)
   attendeeCap        Int?
   groupTripCapacity  Int?         // Declared group size for GROUP_TRIP events
@@ -416,7 +416,9 @@ model TicketTransfer {
   toEmail    String
   toUserId   String?        // populated once the recipient has an account
   token      String         @unique @default(cuid())
-  status     TransferStatus @default(PENDING)
+  status          TransferStatus @default(PENDING)
+  senderPaidFee     Boolean        @default(false)
+  senderPaidArrears Boolean        @default(false)
   expiresAt  DateTime
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
@@ -469,6 +471,8 @@ model PlatformConfig {
   groupTripAutoApproveCap Int      @default(10)
   convenienceFee          Decimal  @default(50) @db.Decimal(10, 2)
   installmentFeePercent   Decimal  @default(2)  @db.Decimal(5, 2)
+  installmentFeeCap       Decimal  @default(150) @db.Decimal(10, 2)
+  transferFee             Decimal  @default(50) @db.Decimal(10, 2)
   updatedAt               DateTime @updatedAt
 
   @@map("platform_config")

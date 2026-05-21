@@ -188,7 +188,6 @@ export async function getSellerBalances() {
       event.experienceType,
       event.platformFeePercent,
       platformConfig,
-      event.platformFlatFee,
     );
     const key = `${event.sellerId}:${event.payoutMethodId ?? "none"}`;
 

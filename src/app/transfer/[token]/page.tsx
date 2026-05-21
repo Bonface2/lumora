@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getTransferByToken } from "@/app/actions/transfer";
+import { getPlatformConfig } from "@/lib/platformConfig";
 import { format } from "date-fns";
 import Link from "next/link";
 import { TransferActions } from "./TransferActions";
@@ -72,7 +73,7 @@ export default async function TransferPage({
     );
   }
 
-  const order = transfer.order;
+  const [order, config] = [transfer.order, await getPlatformConfig()];
   const event_ = order.ticketCategory.event;
   const isInstallment = order.usesInstallments && order.status !== "PAID_IN_FULL";
   const paidAmount = Number(order.paidAmount);
@@ -80,6 +81,8 @@ export default async function TransferPage({
   const defaultedTotal = order.payments
     .filter((p) => p.paymentNumber > 0 && p.status === "DEFAULTED")
     .reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
+  const transferFee = config.transferFee;
+  const totalDueNow = defaultedTotal + transferFee;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
@@ -181,7 +184,25 @@ export default async function TransferPage({
               Offer expires {format(transfer.expiresAt, "dd MMMM yyyy")}
             </p>
 
-            <TransferActions token={token} defaultedTotal={defaultedTotal} />
+            {/* Fee summary */}
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 space-y-1.5 text-sm">
+              {defaultedTotal > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Overdue instalments</span>
+                  <span className="font-semibold">KES {defaultedTotal.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-gray-600">
+                <span>Transfer fee</span>
+                <span className="font-semibold">KES {transferFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-1.5">
+                <span>Due on acceptance</span>
+                <span>KES {totalDueNow.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <TransferActions token={token} totalDueNow={totalDueNow} />
           </div>
         </div>
       </div>

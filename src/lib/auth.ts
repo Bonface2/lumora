@@ -15,7 +15,11 @@ const loginSchema = z.object({
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
   trustHost: true,
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60,      // 1 hour — session expires this long after last renewal
+    updateAge: 5 * 60,    // renew the JWT (and reset the clock) every 5 min of activity
+  },
   pages: {
     signIn: "/login",
     error: "/login",

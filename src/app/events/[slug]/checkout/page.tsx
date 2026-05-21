@@ -20,6 +20,7 @@ interface CategoryPreview {
   allowInstallments: boolean;
   convenienceFee: number;
   installmentFeePercent: number;
+  installmentFeeCap: number;
   installmentPlan: {
     initialPaymentPercent: number;
     depositPercent: number;
@@ -231,7 +232,7 @@ function CheckoutContent() {
       : cartTotal;
   const installmentFee =
     !isCartCheckout && useInstallments && singleCategory?.installmentPlan
-      ? Math.round(cartTotal * ((singleCategory.installmentFeePercent ?? 0) / 100))
+      ? Math.min(Math.round(cartTotal * ((singleCategory.installmentFeePercent ?? 0) / 100)), singleCategory.installmentFeeCap ?? 150)
       : 0;
   const initialAmount = ticketAmountDueNow + convFee + installmentFee;
 

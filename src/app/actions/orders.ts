@@ -140,7 +140,7 @@ export async function createOrder(input: {
 
   const platformConfig = await getPlatformConfig();
   const convenienceFee = platformConfig.convenienceFee;
-  const installmentFee = plan ? Math.round(totalAmount * (platformConfig.installmentFeePercent / 100)) : 0;
+  const installmentFee = plan ? Math.min(Math.round(totalAmount * (platformConfig.installmentFeePercent / 100)), platformConfig.installmentFeeCap) : 0;
   const chargeAmount = amountDueNow + convenienceFee + installmentFee;
 
   const reference = generateReference("LUM");

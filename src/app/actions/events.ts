@@ -184,6 +184,8 @@ export async function publishEvent(
     return { ok: false, error: "This group trip is awaiting admin approval before it can be published." };
   if (event.ticketCategories.length === 0)
     return { ok: false, error: "Add at least one ticket category before publishing." };
+  if (event.experienceType === "GROUP_TRIP" && !event.platformFeePaid)
+    return { ok: false, error: "Pay the listing fee before publishing your group trip." };
 
   await db.event.update({
     where: { id: eventId },
@@ -466,6 +468,42 @@ export async function initiateEventTierUpgrade(
   const res = await initializePayment({
     email: session.user.email!,
     amount: upgradeCost,
+    reference,
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/events/${eventId}/activate/callback?reference=${reference}`,
+  });
+
+  if (!res.ok) return { ok: false, error: "Failed to initialise payment. Please try again." };
+
+  return { ok: true, data: { authorizationUrl: res.url, invoiceId: res.invoiceId } };
+}
+
+export async function initiateGroupTripActivationFee(
+  eventId: string
+): Promise<ApiResponse<{ authorizationUrl: string; invoiceId: string }>> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "SELLER") {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const event = await db.event.findFirst({
+    where: { id: eventId, sellerId: session.user.id },
+    select: { id: true, experienceType: true, groupTripCapacity: true, platformFeePaid: true },
+  });
+
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.experienceType !== "GROUP_TRIP") return { ok: false, error: "This event is not a group trip." };
+  if (event.platformFeePaid) return { ok: false, error: "Listing fee already paid." };
+  if (!event.groupTripCapacity || event.groupTripCapacity < 1) {
+    return { ok: false, error: "Group trip capacity is not set." };
+  }
+
+  const config = await getPlatformConfig();
+  const fee = event.groupTripCapacity * config.groupTripFlatFee;
+  const reference = generateReference("GRP");
+
+  const res = await initializePayment({
+    email: session.user.email!,
+    amount: fee,
     reference,
     redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/events/${eventId}/activate/callback?reference=${reference}`,
   });

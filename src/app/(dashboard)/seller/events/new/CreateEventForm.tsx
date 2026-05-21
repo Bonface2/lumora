@@ -138,11 +138,14 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
       return;
     }
     if (!isEdit && data.eventType === "FREE" && data.experienceType === "PUBLIC") {
-      // FREE public events go straight to activation
+      // FREE public events go straight to activation (tier picker)
       router.push(`/seller/events/${res.data.id}/activate`);
     } else if (!isEdit && "pendingReview" in res.data && res.data.pendingReview) {
-      // GROUP_TRIP requiring admin review
+      // GROUP_TRIP awaiting admin review — can't pay listing fee until approved
       router.push(`/seller/events/${res.data.id}?pendingReview=1`);
+    } else if (!isEdit && data.experienceType === "GROUP_TRIP") {
+      // GROUP_TRIP auto-approved — redirect immediately to pay listing fee
+      router.push(`/seller/events/${res.data.id}/activate?created=1`);
     } else {
       router.push(`/seller/events/${res.data.id}`);
     }

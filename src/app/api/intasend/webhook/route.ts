@@ -75,8 +75,77 @@ export async function POST(req: Request) {
     return tx?.metadata as Record<string, unknown> | null;
   })();
 
-  // ── Transfer default payment ────────────────────────────────────────────────
-  if (webhookMeta?.type === "transfer_default_payment" && webhookMeta?.transferToken) {
+  // ── Sender pre-payment (sender covers fee and/or arrears before invite is sent) ──
+  if (webhookMeta?.type === "transfer_sender_payment") {
+    const fromUserId = webhookMeta.fromUserId as string;
+    const toEmail = webhookMeta.toEmail as string;
+    const orderId = webhookMeta.orderId as string;
+    const senderPaysArrears = !!webhookMeta.senderPaysArrears;
+    const senderPaysFee = !!webhookMeta.senderPaysFee;
+    const defaultedTotal = (webhookMeta.defaultedTotal as number) ?? 0;
+    const transferFee = (webhookMeta.transferFee as number) ?? 50;
+    const expiresAt = new Date(webhookMeta.expiresAt as string);
+    const fromName = (webhookMeta.fromName as string) ?? "Someone";
+    const isInstallment = !!webhookMeta.isInstallment;
+
+    const [toUser, order] = await Promise.all([
+      db.user.findUnique({ where: { email: toEmail }, select: { id: true, name: true } }),
+      db.order.findUnique({
+        where: { id: orderId },
+        include: { payments: true, ticketCategory: { include: { event: true } } },
+      }),
+    ]);
+
+    if (!order) return NextResponse.json({ received: true });
+
+    await db.$transaction(async (tx) => {
+      if (senderPaysArrears && defaultedTotal > 0) {
+        const defaulted = order.payments.filter((p) => p.paymentNumber > 0 && p.status !== "PAID" && (p.status === "DEFAULTED" || p.status === "OVERDUE" || (p.status === "PENDING" && p.dueDate < new Date())));
+        for (const p of defaulted) {
+          await tx.installmentPayment.update({ where: { id: p.id }, data: { status: "PAID", paidAmount: p.amount, paidAt: new Date() } });
+        }
+        const newPaidAmount = Number(order.paidAmount) + defaultedTotal;
+        const isFullyPaid = newPaidAmount >= Number(order.totalAmount) - 0.01;
+        await tx.order.update({ where: { id: orderId }, data: { paidAmount: newPaidAmount, status: isFullyPaid ? "PAID_IN_FULL" : "PARTIAL_PAID" } });
+      }
+      await tx.paymentTransaction.updateMany({ where: { reference }, data: { status: "success" } });
+      await tx.ticketTransfer.create({
+        data: { orderId, fromUserId, toEmail, toUserId: toUser?.id ?? null, expiresAt, senderPaidFee: senderPaysFee, senderPaidArrears: senderPaysArrears },
+      });
+    });
+
+    try {
+      const { sendTransferInvite } = await import("@/lib/email");
+      const event_ = order.ticketCategory.event;
+      const remainingDefaulted = senderPaysArrears ? 0 : order.payments.filter((p) => p.paymentNumber > 0 && p.status !== "PAID" && (p.status === "DEFAULTED" || p.status === "OVERDUE" || (p.status === "PENDING" && p.dueDate < new Date()))).reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
+      const freshTransfer = await db.ticketTransfer.findFirst({ where: { orderId, fromUserId, toEmail, status: "PENDING" }, orderBy: { createdAt: "desc" } });
+      if (freshTransfer) {
+        await sendTransferInvite({
+          to: toEmail,
+          name: toUser?.name ?? "there",
+          fromName,
+          eventTitle: event_.title,
+          categoryName: order.ticketCategory.name,
+          eventDate: format(event_.date, "EEEE, dd MMMM yyyy · HH:mm"),
+          venue: `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`,
+          acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/transfer/${freshTransfer.token}`,
+          expiresAt: format(expiresAt, "dd MMMM yyyy"),
+          isInstallment,
+          hasDefaultedPayments: remainingDefaulted > 0,
+          defaultedAmount: remainingDefaulted > 0 ? `KES ${remainingDefaulted.toLocaleString()}` : undefined,
+          senderPaidFee: senderPaysFee,
+          transferFee,
+        });
+      }
+    } catch (err) {
+      console.error("[intasend-webhook] transfer_sender_payment invite email threw:", err);
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
+  // ── Transfer fee payment (always) ───────────────────────────────────────────
+  if (webhookMeta?.type === "transfer_fee_payment" && webhookMeta?.transferToken) {
     const transferToken = webhookMeta.transferToken as string;
     const toUserId = webhookMeta.toUserId as string;
     const orderId = webhookMeta.orderId as string;
@@ -109,9 +178,9 @@ export async function POST(req: Request) {
       transferEventDate = format(event_.date, "EEEE, dd MMMM yyyy · HH:mm");
       transferVenue = `${event_.venue}${event_.city ? `, ${event_.city}` : ""}`;
 
-      const defaulted = transfer.order.payments.filter((p) => p.status === "DEFAULTED");
-      const totalPaid = defaulted.reduce((s, p) => s + (Number(p.amount) - Number(p.paidAmount)), 0);
-
+      // Pay off any defaulted installments (transfer fee is Lumora's, not credited to order)
+      const defaultedTotal = (webhookMeta.defaultedTotal as number) ?? 0;
+      const defaulted = transfer.order.payments.filter((p) => p.paymentNumber > 0 && p.status !== "PAID" && (p.status === "DEFAULTED" || p.status === "OVERDUE" || (p.status === "PENDING" && p.dueDate < new Date())));
       for (const p of defaulted) {
         await tx.installmentPayment.update({
           where: { id: p.id },
@@ -119,7 +188,7 @@ export async function POST(req: Request) {
         });
       }
 
-      const newPaidAmount = Number(transfer.order.paidAmount) + totalPaid;
+      const newPaidAmount = Number(transfer.order.paidAmount) + defaultedTotal;
       const isFullyPaid = newPaidAmount >= Number(transfer.order.totalAmount) - 0.01;
       await tx.order.update({
         where: { id: orderId },
@@ -148,24 +217,69 @@ export async function POST(req: Request) {
       await tx.paymentTransaction.updateMany({ where: { reference }, data: { status: "success" } });
     });
 
-    if (newTicketNumbers.length > 0) {
-      try {
-        const newOwner = await db.user.findUnique({ where: { id: toUserId }, select: { email: true, name: true } });
-        if (newOwner?.email) {
-          await sendTicketConfirmation({
-            to: newOwner.email,
-            name: newOwner.name ?? "there",
-            eventTitle: transferEventTitle,
-            categoryName: transferCategoryName,
-            ticketNumbers: newTicketNumbers,
-            eventDate: transferEventDate,
-            venue: transferVenue,
-          });
-        }
-      } catch (err) {
-        console.error("[intasend-webhook] transfer ticket email threw:", err);
+  try {
+    const [newOwner, fromUser] = await Promise.all([
+      db.user.findUnique({ where: { id: toUserId }, select: { email: true, name: true } }),
+      db.user.findUnique({ where: { id: webhookMeta.fromUserId as string }, select: { email: true, name: true } }),
+    ]);
+
+    // Notify sender
+    if (fromUser?.email) {
+      const { sendTransferNotification } = await import("@/lib/email");
+      await sendTransferNotification({
+        to: fromUser.email,
+        name: fromUser.name ?? "there",
+        eventTitle: transferEventTitle,
+        toName: newOwner?.name ?? newOwner?.email ?? "The recipient",
+        wasAccepted: true,
+      });
+    }
+
+    // Notify recipient
+    if (newOwner?.email) {
+      const freshOrder = await db.order.findUnique({
+        where: { id: webhookMeta.orderId as string },
+        include: { payments: true },
+      });
+      const isFullyPaid = Number(freshOrder?.paidAmount ?? 0) >= Number(freshOrder?.totalAmount ?? 1) - 0.01;
+
+      if (isFullyPaid && newTicketNumbers.length > 0) {
+        await sendTicketConfirmation({
+          to: newOwner.email,
+          name: newOwner.name ?? "there",
+          eventTitle: transferEventTitle,
+          categoryName: transferCategoryName,
+          ticketNumbers: newTicketNumbers,
+          eventDate: transferEventDate,
+          venue: transferVenue,
+        });
+      } else if (!isFullyPaid && freshOrder) {
+        const { sendTransferAcceptedInstallment } = await import("@/lib/email");
+        const remainingPayments = freshOrder.payments
+          .filter((p) => p.paymentNumber > 0 && p.status !== "PAID")
+          .map((p) => ({
+            paymentNumber: p.paymentNumber,
+            amount: Number(p.amount) - Number(p.paidAmount),
+            dueDate: format(p.dueDate, "dd MMM yyyy"),
+          }));
+        await sendTransferAcceptedInstallment({
+          to: newOwner.email,
+          name: newOwner.name ?? "there",
+          fromName: fromUser?.name ?? fromUser?.email ?? "The sender",
+          eventTitle: transferEventTitle,
+          categoryName: transferCategoryName,
+          eventDate: transferEventDate,
+          venue: transferVenue,
+          totalAmount: Number(freshOrder.totalAmount),
+          totalPaid: Number(freshOrder.paidAmount),
+          remainingPayments,
+          dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/buyer`,
+        });
       }
     }
+  } catch (err) {
+    console.error("[intasend-webhook] transfer email threw:", err);
+  }
 
     return NextResponse.json({ received: true });
   }
@@ -340,6 +454,7 @@ export async function POST(req: Request) {
 
   const paymentMode = (txMeta?.paymentMode as string) ?? "installment";
   const isFollowOnPayment = !!transaction.installmentPaymentId || txMeta?.isFollowOn === true;
+  const ticketAmount = typeof txMeta?.ticketAmount === "number" ? txMeta.ticketAmount : amountKes;
 
   await db.$transaction(async (tx) => {
     await tx.paymentTransaction.update({
@@ -355,7 +470,7 @@ export async function POST(req: Request) {
         });
       }
     } else if (paymentMode === "custom") {
-      let remaining = amountKes;
+      let remaining = ticketAmount;
       for (const payment of order.payments.filter((p) => p.paymentNumber > 0 && p.status === "PENDING")) {
         const stillOwed = Number(payment.amount) - Number(payment.paidAmount);
         if (remaining >= stillOwed - 0.01) {
@@ -389,7 +504,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const newPaidAmount = Number(order.paidAmount) + amountKes;
+    const newPaidAmount = Number(order.paidAmount) + ticketAmount;
     const isFullyPaid = newPaidAmount >= Number(order.totalAmount) - 0.01;
 
     await tx.order.update({

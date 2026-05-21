@@ -5,8 +5,10 @@ export type PlatformConfigData = {
   paidFeePercent: number;
   groupTripFlatFee: number;
   groupTripAutoApproveCap: number;
-  convenienceFee: number;      // flat KES per paid checkout transaction
+  convenienceFee: number;        // flat KES per paid checkout transaction
   installmentFeePercent: number; // % of total ticket price charged when using installments
+  installmentFeeCap: number;     // maximum KES charged regardless of percentage
+  transferFee: number;           // flat KES charged to recipient on ticket transfer
 };
 
 export async function getPlatformConfig(): Promise<PlatformConfigData> {
@@ -31,6 +33,8 @@ export async function getPlatformConfig(): Promise<PlatformConfigData> {
     groupTripAutoApproveCap: config.groupTripAutoApproveCap,
     convenienceFee: Number(config.convenienceFee),
     installmentFeePercent: Number(config.installmentFeePercent),
+    installmentFeeCap: Number(config.installmentFeeCap),
+    transferFee: Number(config.transferFee),
   };
 }
 
@@ -40,23 +44,15 @@ export function computeSellerNet(
   experienceType: string,
   platformFeePercent: Decimal | number | null,
   config: PlatformConfigData,
-  platformFlatFee?: Decimal | number | null,
 ): { sellerNet: number; platformFee: number; feeLabel: string } {
   // FREE events: no transaction cut — they paid an activation fee upfront
   if (eventType === "FREE") {
     return { sellerNet: grossAmount, platformFee: 0, feeLabel: "Activation fee" };
   }
 
-  // GROUP_TRIP: flat fee per registration (per-event override takes priority)
+  // GROUP_TRIP: listing fee paid upfront — no per-ticket deduction
   if (experienceType === "GROUP_TRIP") {
-    const fee = platformFlatFee != null ? Number(platformFlatFee) : config.groupTripFlatFee;
-    const platformFee = Math.min(fee, grossAmount);
-    const isCustom = platformFlatFee != null;
-    return {
-      sellerNet: grossAmount - platformFee,
-      platformFee,
-      feeLabel: `KES ${fee.toLocaleString()} flat${isCustom ? " (custom)" : ""}`,
-    };
+    return { sellerNet: grossAmount, platformFee: 0, feeLabel: "Listing fee (paid upfront)" };
   }
 
   // PAID (PUBLIC / INVITE_ONLY): percentage-based

@@ -48,6 +48,7 @@ export async function GET(
     allowInstallments: category.allowInstallments,
     convenienceFee: Number(category.price) === 0 ? 0 : config.convenienceFee,
     installmentFeePercent: config.installmentFeePercent,
+    installmentFeeCap: config.installmentFeeCap,
     installmentPlan: plan
       ? {
           initialPaymentPercent: effectiveInitialPercent,

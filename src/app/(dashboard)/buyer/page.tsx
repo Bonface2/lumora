@@ -6,6 +6,7 @@ import { sendTransferExpired } from "@/lib/email";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { InstallmentPaymentStatus } from "@prisma/client";
 import { TransferButton } from "@/components/TransferButton";
+import { getPlatformConfig } from "@/lib/platformConfig";
 const statusConfig: Record<OrderStatus, { label: string; cls: string }> = {
   PENDING: { label: "Pending", cls: "bg-gray-100 text-gray-600" },
   PARTIAL_PAID: { label: "Installments", cls: "bg-amber-100 text-amber-700" },
@@ -158,10 +159,13 @@ export default async function BuyerTicketsPage({
     ...(counts.revoked > 0 ? [{ value: "revoked" as Tab, label: "Revoked" }] : []),
   ];
 
-  const user = await db.user.findUnique({
-    where: { id: session!.user.id },
-    select: { name: true, email: true },
-  });
+  const [user, platformConfig] = await Promise.all([
+    db.user.findUnique({
+      where: { id: session!.user.id },
+      select: { name: true, email: true },
+    }),
+    getPlatformConfig(),
+  ]);
 
   // Expire any stale pending transfers and notify the sender
   const expiredTransfers = await db.ticketTransfer.findMany({
@@ -457,12 +461,21 @@ export default async function BuyerTicketsPage({
                     )}
                   </div>
 
-                  {/* Transfer — shown for active orders */}
-                  {!["REVOKED", "CANCELLED", "DEFAULTED"].includes(order.status) && (
+                  {/* Transfer — only for active orders on public events */}
+                  {!["REVOKED", "CANCELLED", "DEFAULTED"].includes(order.status) && event.experienceType === "PUBLIC" && (
                     <div className="flex items-center justify-center gap-2 border-t border-gray-100 py-3.5">
                       <TransferButton
                         orderId={order.id}
                         eventTitle={event.title}
+                        arrears={order.payments
+                          .filter((p) =>
+                            p.paymentNumber > 0 &&
+                            p.status !== "PAID" &&
+                            (p.status === "DEFAULTED" || p.status === "OVERDUE" ||
+                              (p.status === "PENDING" && new Date(p.dueDate) < now))
+                          )
+                          .reduce((sum, p) => sum + (Number(p.amount) - Number(p.paidAmount)), 0)}
+                        transferFee={platformConfig.transferFee}
                         pendingTransfer={transferByOrder[order.id] ?? null}
                       />
                       <a

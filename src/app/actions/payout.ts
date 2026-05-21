@@ -195,7 +195,6 @@ export async function getDisbursementData(): Promise<ApiResponse<DisbursementDat
       ev.experienceType,
       ev.platformFeePercent,
       platformConfig,
-      ev.platformFlatFee,
     );
     totalGross += orderGross;
     totalSellerNet += sellerNet;

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { verifyPayment } from "@/lib/intasend";
 import { db } from "@/lib/db";
 import Link from "next/link";
@@ -15,6 +16,9 @@ export default async function ActivateCallbackPage({
 
   if (!reference) redirect(`/seller/events/${id}`);
 
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
   // IntaSend appends invoice_id to the redirect URL; fall back to DB lookup.
   let invoiceId = invoice_id;
   if (!invoiceId) {
@@ -26,10 +30,12 @@ export default async function ActivateCallbackPage({
   }
 
   let verified = false;
+  let paidAmount = 0;
   try {
     if (invoiceId) {
       const result = await verifyPayment(invoiceId);
       verified = result.verified;
+      paidAmount = result.amount;
     }
   } catch {
     verified = false;
@@ -57,6 +63,24 @@ export default async function ActivateCallbackPage({
     );
   }
 
+  // Update DB — idempotent; won't re-run if already marked paid
+  const event = await db.event.findFirst({
+    where: { id, sellerId: session.user.id },
+    select: { platformFeePaid: true, experienceType: true },
+  });
+
+  if (event && !event.platformFeePaid) {
+    await db.event.update({
+      where: { id },
+      data: {
+        platformFeePaid: true,
+        ...(paidAmount > 0 ? { platformFeeAmount: paidAmount } : {}),
+      },
+    });
+  }
+
+  const isGroupTrip = event?.experienceType === "GROUP_TRIP";
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 text-center">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
@@ -64,9 +88,13 @@ export default async function ActivateCallbackPage({
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900">Event activated!</h1>
+      <h1 className="text-2xl font-bold text-gray-900">
+        {isGroupTrip ? "Listing fee paid!" : "Event activated!"}
+      </h1>
       <p className="mt-2 text-sm text-gray-500">
-        Your payment was received. Your event is now ready to publish.
+        {isGroupTrip
+          ? "Your listing fee was received. Your group trip is now ready to publish."
+          : "Your payment was received. Your event is now ready to publish."}
       </p>
       <div className="mt-6 flex gap-3">
         <Link

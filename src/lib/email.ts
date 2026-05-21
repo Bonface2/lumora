@@ -918,6 +918,8 @@ export async function sendTransferInvite({
   isInstallment,
   hasDefaultedPayments = false,
   defaultedAmount,
+  senderPaidFee = false,
+  transferFee = 50,
 }: {
   to: string;
   name: string;
@@ -931,30 +933,94 @@ export async function sendTransferInvite({
   isInstallment: boolean;
   hasDefaultedPayments?: boolean;
   defaultedAmount?: string;
+  senderPaidFee?: boolean;
+  transferFee?: number;
 }) {
-  const transferType = isInstallment ? "payment schedule (installment plan)" : "fully paid ticket";
+  // What will the recipient owe when they click "Accept"?
+  const owesArrears = hasDefaultedPayments && !!defaultedAmount;
+  const owesFee = !senderPaidFee;
+  const owesNothing = !owesArrears && !owesFee;
 
-  const defaultedWarning = hasDefaultedPayments && defaultedAmount ? `
+  // Cost breakdown section
+  const costSection = owesNothing
+    ? `
     <table width="100%" cellpadding="0" cellspacing="0" border="0"
-           style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 10px 10px 0;
+           style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:0 10px 10px 0;
                   padding:14px 18px;margin:24px 0;">
       <tr>
-        <td style="font-size:13px;color:#9a3412;line-height:1.5;">
-          <strong>⚠️ Immediate payment required:</strong> This payment schedule has
-          <strong>${defaultedAmount}</strong> in overdue instalments. When you accept this transfer
-          you will be taken to pay this amount immediately before taking ownership. Subsequent
-          instalments will then continue on the original schedule.
+        <td style="font-size:13px;color:#166534;line-height:1.5;">
+          <strong>✅ No payment required on acceptance.</strong>${" "}
+          ${isInstallment
+            ? "You'll take over the remaining installment schedule as-is — all outstanding fees have already been settled."
+            : "The ticket is yours the moment you accept."}
         </td>
       </tr>
+    </table>`
+    : (() => {
+        const rows: string[] = [];
+        if (owesArrears) {
+          rows.push(`
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#9a3412;">⚠️ Overdue instalments</td>
+            <td style="padding:6px 0;font-size:13px;font-weight:700;color:#9a3412;text-align:right;">${defaultedAmount}</td>
+          </tr>`);
+        }
+        if (owesFee) {
+          rows.push(`
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#475569;">Transfer fee</td>
+            <td style="padding:6px 0;font-size:13px;font-weight:700;color:#0f172a;text-align:right;">KES ${transferFee.toLocaleString()}</td>
+          </tr>`);
+        }
+        const borderStyle = owesArrears
+          ? "background:#fff7ed;border-left:4px solid #f97316;"
+          : "background:#f8fafc;border-left:4px solid #94a3b8;";
+        return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="${borderStyle}border-radius:0 10px 10px 0;padding:14px 18px;margin:24px 0;">
+      <tr>
+        <td colspan="2" style="font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                                color:#64748b;padding-bottom:8px;">
+          ${owesArrears ? "⚠️ Payment required on acceptance" : "Due on acceptance"}
+        </td>
+      </tr>
+      ${rows.join("")}
+      ${owesArrears && owesFee ? `
+      <tr>
+        <td style="padding-top:8px;border-top:1px solid #fed7aa;font-size:13px;font-weight:700;color:#9a3412;">Total due now</td>
+        <td style="padding-top:8px;border-top:1px solid #fed7aa;font-size:13px;font-weight:700;color:#9a3412;text-align:right;">
+          KES ${(transferFee).toLocaleString()} + ${defaultedAmount}
+        </td>
+      </tr>` : ""}
     </table>
-  ` : "";
+    ${owesArrears ? `<p style="margin:0 0 16px;font-size:12px;color:#64748b;line-height:1.5;">
+      You'll be taken to complete payment before ownership transfers. After clearing the overdue amount,
+      the remaining installment schedule continues as normal.
+    </p>` : ""}`;
+      })();
+
+  // Installment inheritance note (when there are future payments — no arrears, just schedule)
+  const installmentNote = isInstallment && !owesArrears ? `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;
+                  padding:14px 18px;margin:0 0 24px;">
+      <tr>
+        <td style="font-size:13px;color:#92400e;line-height:1.5;">
+          <strong>📅 You'll inherit the remaining payment schedule.</strong>
+          Future instalments will fall due on the original dates. Missing a payment may result in your
+          spot being revoked — you can manage everything from your buyer dashboard.
+        </td>
+      </tr>
+    </table>` : "";
 
   const body = `
     <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
       Hi ${name},
     </p>
     <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
-      <strong style="color:#0f172a;">${fromName}</strong> is transferring their <strong style="color:#0f172a;">${transferType}</strong> for <strong style="color:#0f172a;">${eventTitle}</strong> to you. Review the details below and accept to take ownership.
+      <strong style="color:#0f172a;">${fromName}</strong> wants to transfer their
+      ${isInstallment ? "ticket booking (with a remaining payment schedule)" : "fully paid ticket"}
+      for <strong style="color:#0f172a;">${eventTitle}</strong> to you.
     </p>
 
     ${infoCard([
@@ -964,14 +1030,17 @@ export async function sendTransferInvite({
       { label: "Venue",       value: venue },
     ])}
 
-    ${defaultedWarning}
+    ${costSection}
 
-    <div style="margin-top:28px;">
-      ${ctaButton(hasDefaultedPayments ? "Review &amp; Accept Transfer" : "Review &amp; Accept Transfer", acceptUrl)}
+    ${installmentNote}
+
+    <div style="margin-top:4px;">
+      ${ctaButton("Review &amp; Accept Transfer", acceptUrl)}
     </div>
 
     <p style="margin:20px 0 0;font-size:13px;color:#64748b;line-height:1.5;">
       This offer expires on <strong style="color:#0f172a;">${expiresAt}</strong>.
+      You can also decline if you don't want it.
     </p>
 
     <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
@@ -984,7 +1053,9 @@ export async function sendTransferInvite({
     to,
     subject: `${fromName} wants to transfer their ticket — ${eventTitle}`,
     html: shell({
-      preheader: `You've been invited to take over a ticket for ${eventTitle}.`,
+      preheader: owesNothing
+        ? `${fromName} is transferring a ticket for ${eventTitle} to you — no payment required.`
+        : `${fromName} is transferring a ticket for ${eventTitle} to you — review what's due on acceptance.`,
       headline: "Ticket transfer invitation",
       label: "Transfer offer",
       body,
@@ -1139,8 +1210,11 @@ export async function sendTransferAcceptedInstallment({
     ` : ""}
 
     <div style="margin-top:28px;">
-      ${ctaButton("View my bookings", dashboardUrl)}
+      ${ctaButton("Go to my buyer dashboard", dashboardUrl)}
     </div>
+    <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+      From your dashboard you can view upcoming due dates, make payments, and download your ticket once it's fully paid.
+    </p>
   `;
 
   return send({
@@ -1185,6 +1259,44 @@ export async function sendTransferExpired({
     html: shell({
       preheader: `Your transfer invitation to ${toEmail} has expired`,
       headline: "Transfer invitation expired",
+      label: "Transfer update",
+      body,
+    }),
+  });
+}
+
+export async function sendTransferCancelled({
+  to,
+  name,
+  fromName,
+  eventTitle,
+}: {
+  to: string;
+  name: string;
+  fromName: string;
+  eventTitle: string;
+}) {
+  const body = `
+    <p style="margin:0 0 6px;font-size:22px;font-weight:900;color:#0f172a;">
+      Hi ${name},
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
+      <strong style="color:#0f172a;">${fromName}</strong> has cancelled their transfer invitation for
+      <strong style="color:#0f172a;">${eventTitle}</strong>. The ticket is no longer available for
+      transfer — the link in the original invitation will no longer work.
+    </p>
+    <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.5;">
+      If you believe this was a mistake, reach out to ${fromName} directly.
+    </p>
+  `;
+
+  return send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Transfer cancelled — ${eventTitle}`,
+    html: shell({
+      preheader: `${fromName} has cancelled the ticket transfer for ${eventTitle}.`,
+      headline: "Transfer cancelled",
       label: "Transfer update",
       body,
     }),
