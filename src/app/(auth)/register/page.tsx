@@ -67,8 +67,20 @@ function RegisterForm() {
       setServerError(res.error);
       return;
     }
-    const next = callbackUrl !== "/" ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : "";
-    router.push(`/login?registered=1${next}`);
+    // Auto-sign-in with the credentials they just registered with
+    const signInRes = await signIn("credentials", {
+      email: data.email,
+      password: data.password,
+      redirect: false,
+    });
+    if (signInRes?.ok) {
+      router.push(callbackUrl);
+      router.refresh();
+    } else {
+      // Fallback: send to login pre-loaded with the callback
+      const next = callbackUrl !== "/" ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : "";
+      router.push(`/login?registered=1${next}`);
+    }
   }
 
   return (
