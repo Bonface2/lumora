@@ -3,7 +3,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Footer } from "@/components/layouts/Footer";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const events = await db.event.findMany({
