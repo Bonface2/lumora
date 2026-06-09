@@ -23,6 +23,7 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false, max
     control,
     watch,
     setValue,
+    getValues,
     formState: { errors },
   } = useFormContext<CreateEventFormData>();
 
@@ -53,10 +54,17 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false, max
     name: `ticketCategories.${index}.installmentPlan.gracePeriodDays`,
   });
 
-  const graceOverridesEventCutoff = useWatch({
-    control,
-    name: `ticketCategories.${index}.installmentPlan.graceOverridesEventCutoff`,
-  });
+  const allCategories = useWatch({ control, name: "ticketCategories" });
+
+  const otherCategoriesWithPlan = useMemo(() => {
+    if (!Array.isArray(allCategories)) return [];
+    return allCategories
+      .map((cat, i) => ({
+        sourceIndex: i,
+        label: cat?.name?.trim() ? cat.name : `Category ${i + 1}`,
+      }))
+      .filter((item) => item.sourceIndex !== index && allCategories[item.sourceIndex]?.allowInstallments);
+  }, [allCategories, index]);
 
   // Max allowed grace = whole days from the latest due date to event start time (hard cap)
   const maxGraceDays = useMemo(() => {
@@ -111,11 +119,21 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false, max
   }, [enforceRevocation, eventDateStr, gracePeriodDays, scheduleItems]);
 
 
-  const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } =
+  const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule, replace: replaceSchedule } =
     useFieldArray({
       control,
       name: `ticketCategories.${index}.installmentPlan.scheduleItems`,
     });
+
+  function copyPlanFrom(sourceIndex: number) {
+    const plan = getValues(`ticketCategories.${sourceIndex}.installmentPlan`);
+    if (!plan) return;
+    setValue(`ticketCategories.${index}.installmentPlan.initialPaymentPercent`, plan.initialPaymentPercent, { shouldValidate: true });
+    setValue(`ticketCategories.${index}.installmentPlan.gracePeriodDays`, plan.gracePeriodDays, { shouldValidate: true });
+    setValue(`ticketCategories.${index}.installmentPlan.enforceRevocation`, plan.enforceRevocation, { shouldValidate: true });
+    setValue(`ticketCategories.${index}.installmentPlan.graceOverridesEventCutoff`, plan.graceOverridesEventCutoff, { shouldValidate: true });
+    replaceSchedule(plan.scheduleItems ?? []);
+  }
 
   const catErrors = errors.ticketCategories?.[index];
   const planErrors = catErrors?.installmentPlan;
@@ -217,7 +235,24 @@ export function TicketCategoryFields({ index, onRemove, isFreeEvent = false, max
           {/* Installment plan config — shown only when toggle is on */}
           {allowInstallments && (
           <div className="rounded-lg border border-primary-200 bg-primary-50 p-4 space-y-4">
-            <p className="text-sm font-medium text-primary-800">Installment plan</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-primary-800">Installment plan</p>
+              {otherCategoriesWithPlan.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-gray-500">Copy from:</span>
+                  {otherCategoriesWithPlan.map(({ sourceIndex, label }) => (
+                    <button
+                      key={sourceIndex}
+                      type="button"
+                      onClick={() => copyPlanFrom(sourceIndex)}
+                      className="rounded-full border border-primary-300 bg-white px-2.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-100 transition-colors"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="max-w-xs">
               <Label required>Initial payment (%)</Label>

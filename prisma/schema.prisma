@@ -156,6 +156,7 @@ model Event {
   venue       String
   city        String?
   coverImage  String?
+  images      String[]
   status             EventStatus    @default(DRAFT)
   eventType          EventType      @default(PAID)
   experienceType     ExperienceType @default(PUBLIC)

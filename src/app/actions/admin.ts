@@ -444,6 +444,37 @@ export async function triggerSellerPayout(
   }
 }
 
+export async function getAdminDisbursements(sellerId?: string) {
+  if (!(await requireAdmin())) return [];
+
+  const payouts = await db.payout.findMany({
+    where: {
+      ...(sellerId ? { sellerId } : {}),
+    },
+    include: {
+      seller: { select: { id: true, name: true, email: true } },
+      payoutMethod: {
+        select: { bankName: true, bankType: true, accountNumber: true, label: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return payouts;
+}
+
+export async function getAdminDisbursementSellers() {
+  if (!(await requireAdmin())) return [];
+
+  const sellers = await db.user.findMany({
+    where: { role: "SELLER", payouts: { some: {} } },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
+
+  return sellers;
+}
+
 // ─── Group trip review ────────────────────────────────────────────────────────
 
 export async function getPendingGroupTrips() {

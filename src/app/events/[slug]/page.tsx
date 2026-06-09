@@ -6,6 +6,7 @@ import Link from "next/link";
 import { PurchaseSection } from "./PurchaseSection";
 import { NavUserSidebar } from "@/components/landing/NavUserSidebar";
 import { Footer } from "@/components/layouts/Footer";
+import { ImageCarousel } from "./ImageCarousel";
 
 export async function generateMetadata({
   params,
@@ -85,9 +86,11 @@ export default async function PublicEventPage({
         </div>
       </nav>
 
-      {/* ── Hero image ── */}
+      {/* ── Hero image / carousel ── */}
       <div className="relative h-72 w-full overflow-hidden sm:h-96 md:h-[440px]">
-        {event.coverImage ? (
+        {event.images.length > 0 ? (
+          <ImageCarousel images={event.images} alt={event.title} />
+        ) : event.coverImage ? (
           <img
             src={event.coverImage}
             alt={event.title}
@@ -145,20 +148,8 @@ export default async function PublicEventPage({
       <div className="mx-auto max-w-6xl px-6 py-10 md:px-10">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
 
-          {/* Left — image + description */}
+          {/* Left — description */}
           <div className="space-y-6 lg:col-span-2">
-            {/* Cover image thumbnail (shown only when we have one, as a proper preview) */}
-            {event.coverImage && (
-              <div className="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-                <img
-                  src={event.coverImage}
-                  alt={event.title}
-                  className="w-full object-cover"
-                  style={{ maxHeight: "340px" }}
-                />
-              </div>
-            )}
-
             {/* About */}
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-lg font-black tracking-tight text-gray-900">About this experience</h2>

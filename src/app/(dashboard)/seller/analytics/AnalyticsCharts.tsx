@@ -6,6 +6,7 @@ import {
 } from "recharts";
 
 interface EventStat {
+  id: string;
   name: string;
   revenue: number;
   collected: number;
@@ -32,6 +33,7 @@ interface Props {
   grandOutstanding: number;
   grandSold: number;
   grandAvailable: number;
+  grandComplimentaryIssued: number;
   categoryStats: CategoryStat[];
   grandDefaultRate: number;
   grandNearingRevocation: number;
@@ -63,6 +65,7 @@ export function AnalyticsCharts({
   grandOutstanding,
   grandSold,
   grandAvailable,
+  grandComplimentaryIssued,
   categoryStats,
   grandDefaultRate,
   grandNearingRevocation,
@@ -73,8 +76,9 @@ export function AnalyticsCharts({
 
   /* Donut — tickets */
   const ticketDonut = [
-    { name: "Sold",      value: grandSold },
-    { name: "Remaining", value: Math.max(0, grandAvailable - grandSold) },
+    { name: "Sold",          value: grandSold },
+    { name: "Complimentary", value: grandComplimentaryIssued },
+    { name: "Remaining",     value: Math.max(0, grandAvailable - grandSold) },
   ];
 
   /* Donut — revenue */
@@ -172,11 +176,12 @@ export function AnalyticsCharts({
           {/* Ticket sales donut */}
           <div className="flex-1 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <h3 className="mb-1 text-sm font-black text-gray-900">Ticket sales</h3>
-            <p className="mb-3 text-xs text-gray-400">{grandSold} of {grandAvailable} sold</p>
+            <p className="mb-3 text-xs text-gray-400">{grandSold + grandComplimentaryIssued} of {grandAvailable} issued</p>
             <div className="flex items-center gap-4">
               <PieChart width={90} height={90}>
                 <Pie data={ticketDonut} cx={40} cy={40} innerRadius={28} outerRadius={42} dataKey="value" strokeWidth={0} startAngle={90} endAngle={-270}>
                   <Cell fill={TEAL} />
+                  <Cell fill={TEAL2} />
                   <Cell fill={GRAY} />
                 </Pie>
               </PieChart>
@@ -185,6 +190,12 @@ export function AnalyticsCharts({
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: TEAL }} />
                   <span className="text-gray-600">Sold <strong>{grandSold}</strong></span>
                 </div>
+                {grandComplimentaryIssued > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: TEAL2 }} />
+                    <span className="text-gray-600">Complimentary <strong>{grandComplimentaryIssued}</strong></span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: GRAY }} />
                   <span className="text-gray-600">Remaining <strong>{Math.max(0, grandAvailable - grandSold)}</strong></span>
@@ -320,7 +331,7 @@ export function AnalyticsCharts({
             {eventStats.map((e) => {
               const pct = e.available > 0 ? Math.round((e.sold / e.available) * 100) : 0;
               return (
-                <div key={e.name}>
+                <div key={e.id}>
                   <div className="mb-1.5 flex items-center justify-between text-xs">
                     <span className="font-semibold text-gray-700 truncate max-w-[60%]">{e.name}</span>
                     <span className="text-gray-400">{e.sold} / {e.available} · <strong className="text-gray-700">{pct}%</strong></span>

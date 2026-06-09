@@ -58,11 +58,13 @@ export default async function AnalyticsPage({
   let grandCollected = 0;
   let grandSold = 0;
   let grandAvailable = 0;
+  let grandComplimentaryIssued = 0;
   let grandNearingRevocation = 0;
   let grandRevoked = 0;
   let grandTotalOrders = 0;
 
   const eventStats: {
+    id: string;
     name: string;
     revenue: number;
     collected: number;
@@ -86,11 +88,18 @@ export default async function AnalyticsPage({
     let evRevenue = 0;
     let evCollected = 0;
     let evSold = 0;
-    const evAvailable = event.ticketCategories.reduce((s, c) => s + c.totalQuantity, 0);
+    const evAvailable = event.ticketCategories
+      .filter((c) => !c.isComplimentary)
+      .reduce((s, c) => s + c.totalQuantity, 0);
 
     let evOutstanding = 0;
 
     for (const cat of event.ticketCategories) {
+      if (cat.isComplimentary) {
+        grandComplimentaryIssued += cat.soldQuantity;
+        continue;
+      }
+
       evSold += cat.soldQuantity;
       evRevenue += Number(cat.price) * cat.soldQuantity;
 
@@ -133,6 +142,7 @@ export default async function AnalyticsPage({
     grandAvailable += evAvailable;
 
     eventStats.push({
+      id: event.id,
       name: event.title,
       revenue: evRevenue,
       collected: evCollected,
@@ -152,6 +162,7 @@ export default async function AnalyticsPage({
   let grossCollected = 0;
   for (const event of allEvents) {
     for (const cat of event.ticketCategories) {
+      if (cat.isComplimentary) continue;
       for (const order of cat.orders) {
         if (order.status === "PENDING" || order.status === "CANCELLED") continue;
         const paid = Number(order.paidAmount);
@@ -321,6 +332,7 @@ export default async function AnalyticsPage({
             grandOutstanding={grandOutstanding}
             grandSold={grandSold}
             grandAvailable={grandAvailable}
+            grandComplimentaryIssued={grandComplimentaryIssued}
             categoryStats={categoryStats}
             grandDefaultRate={grandDefaultRate}
             grandNearingRevocation={grandNearingRevocation}

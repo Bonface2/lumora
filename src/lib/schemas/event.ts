@@ -33,6 +33,7 @@ const eventBaseSchema = z.object({
   venue: z.string().min(2, "Venue is required"),
   city: z.string().optional(),
   coverImage: z.string().optional(),
+  images: z.array(z.string()).optional(),
   payoutMethodId: z.string().optional(),
   eventType: z.enum(["FREE", "PAID"]),
   experienceType: z.enum(["PUBLIC", "INVITE_ONLY", "GROUP_TRIP"]),

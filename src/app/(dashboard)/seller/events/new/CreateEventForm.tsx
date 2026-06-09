@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
-import { ImageUpload } from "@/components/ui/ImageUpload";
+import { MultiImageUpload } from "@/components/ui/MultiImageUpload";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { createEvent, updateEvent } from "@/app/actions/events";
 import { createEventSchema, editEventSchema, type CreateEventFormData } from "@/lib/schemas/event";
@@ -217,10 +217,10 @@ export function CreateEventForm({ eventId, defaultValues, payoutMethods, payoutM
             </div>
 
             <div>
-              <Label>Cover image</Label>
-              <ImageUpload
-                value={watch("coverImage")}
-                onChange={(url) => setValue("coverImage", url, { shouldDirty: true })}
+              <Label>Images</Label>
+              <MultiImageUpload
+                value={watch("images") ?? []}
+                onChange={(urls) => setValue("images", urls, { shouldDirty: true })}
               />
             </div>
 

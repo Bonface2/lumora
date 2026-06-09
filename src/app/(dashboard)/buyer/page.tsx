@@ -367,7 +367,7 @@ export default async function BuyerTicketsPage({
                     </p>
                     <p className="mt-0.5 text-xs text-gray-400">{order.ticketCategory.name}</p>
 
-                    {order.tickets.length > 0 && (
+                    {order.status === "PAID_IN_FULL" && order.tickets.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {order.tickets.map((t) => (
                           <span
