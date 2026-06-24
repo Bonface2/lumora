@@ -75,40 +75,50 @@ export async function createOrder(input: {
     const prefix = category.event.title.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
     const ticketNumbers: string[] = [];
 
-    await db.$transaction(async (tx) => {
-      const order = await tx.order.create({
-        data: {
-          buyerId: session.user.id,
-          ticketCategoryId: category.id,
-          quantity,
-          totalAmount: 0,
-          paidAmount: 0,
-          status: "PAID_IN_FULL",
-          usesInstallments: false,
-          ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
-        },
-      });
-      await tx.installmentPayment.create({
-        data: {
-          orderId: order.id,
-          paymentNumber: 0,
-          amount: 0,
-          dueDate: new Date(),
-          status: "PAID",
-        },
-      });
-      for (let i = 0; i < quantity; i++) {
-        const num = generateTicketNumber(prefix);
-        ticketNumbers.push(num);
-        await tx.ticket.create({
-          data: { orderId: order.id, ticketCategoryId: category.id, ticketNumber: num },
+    try {
+      await db.$transaction(async (tx) => {
+        // Atomically reserve tickets — prevents overselling under concurrent load
+        const reserved = await tx.$executeRaw`
+          UPDATE "TicketCategory"
+          SET "soldQuantity" = "soldQuantity" + ${quantity}
+          WHERE id = ${category.id} AND "soldQuantity" + ${quantity} <= "totalQuantity"
+        `;
+        if (reserved === 0) throw new Error("SOLD_OUT");
+
+        const order = await tx.order.create({
+          data: {
+            buyerId: session.user.id,
+            ticketCategoryId: category.id,
+            quantity,
+            totalAmount: 0,
+            paidAmount: 0,
+            status: "PAID_IN_FULL",
+            usesInstallments: false,
+            ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
+          },
         });
-      }
-      await tx.ticketCategory.update({
-        where: { id: category.id },
-        data: { soldQuantity: { increment: quantity } },
+        await tx.installmentPayment.create({
+          data: {
+            orderId: order.id,
+            paymentNumber: 0,
+            amount: 0,
+            dueDate: new Date(),
+            status: "PAID",
+          },
+        });
+        for (let i = 0; i < quantity; i++) {
+          const num = generateTicketNumber(prefix);
+          ticketNumbers.push(num);
+          await tx.ticket.create({
+            data: { orderId: order.id, ticketCategoryId: category.id, ticketNumber: num },
+          });
+        }
       });
-    });
+    } catch (err) {
+      if (err instanceof Error && err.message === "SOLD_OUT")
+        return { ok: false, error: "This ticket category is sold out." };
+      throw err;
+    }
 
     if (input.inviteToken) {
       await db.privateEventToken.updateMany({
@@ -303,45 +313,54 @@ export async function createCartOrder(input: {
     });
     const result: Array<{ name: string; quantity: number; ticketNumbers: string[] }> = [];
 
-    await db.$transaction(async (tx) => {
-      for (const item of enriched) {
-        const prefix = item.cat.event.title.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
-        const order = await tx.order.create({
-          data: {
-            buyerId: session.user.id,
-            ticketCategoryId: item.ticketCategoryId,
-            quantity: item.quantity,
-            totalAmount: 0,
-            paidAmount: 0,
-            status: "PAID_IN_FULL",
-            usesInstallments: false,
-            ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
-          },
-        });
-        await tx.installmentPayment.create({
-          data: {
-            orderId: order.id,
-            paymentNumber: 0,
-            amount: 0,
-            dueDate: new Date(),
-            status: "PAID",
-          },
-        });
-        const ticketNumbers: string[] = [];
-        for (let i = 0; i < item.quantity; i++) {
-          const num = generateTicketNumber(prefix);
-          ticketNumbers.push(num);
-          await tx.ticket.create({
-            data: { orderId: order.id, ticketCategoryId: item.ticketCategoryId, ticketNumber: num },
+    try {
+      await db.$transaction(async (tx) => {
+        for (const item of enriched) {
+          const reserved = await tx.$executeRaw`
+            UPDATE "TicketCategory"
+            SET "soldQuantity" = "soldQuantity" + ${item.quantity}
+            WHERE id = ${item.ticketCategoryId} AND "soldQuantity" + ${item.quantity} <= "totalQuantity"
+          `;
+          if (reserved === 0) throw new Error("SOLD_OUT:" + item.cat.name);
+
+          const prefix = item.cat.event.title.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
+          const order = await tx.order.create({
+            data: {
+              buyerId: session.user.id,
+              ticketCategoryId: item.ticketCategoryId,
+              quantity: item.quantity,
+              totalAmount: 0,
+              paidAmount: 0,
+              status: "PAID_IN_FULL",
+              usesInstallments: false,
+              ...(input.inviteToken ? { inviteSource: "LINK" } : {}),
+            },
           });
+          await tx.installmentPayment.create({
+            data: {
+              orderId: order.id,
+              paymentNumber: 0,
+              amount: 0,
+              dueDate: new Date(),
+              status: "PAID",
+            },
+          });
+          const ticketNumbers: string[] = [];
+          for (let i = 0; i < item.quantity; i++) {
+            const num = generateTicketNumber(prefix);
+            ticketNumbers.push(num);
+            await tx.ticket.create({
+              data: { orderId: order.id, ticketCategoryId: item.ticketCategoryId, ticketNumber: num },
+            });
+          }
+          result.push({ name: item.cat.name, quantity: item.quantity, ticketNumbers });
         }
-        await tx.ticketCategory.update({
-          where: { id: item.ticketCategoryId },
-          data: { soldQuantity: { increment: item.quantity } },
-        });
-        result.push({ name: item.cat.name, quantity: item.quantity, ticketNumbers });
-      }
-    });
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("SOLD_OUT:"))
+        return { ok: false, error: `${err.message.slice("SOLD_OUT:".length)} is sold out.` };
+      throw err;
+    }
 
     const firstCatForEmail = enriched[0].cat;
     if (result.length === 1) {
