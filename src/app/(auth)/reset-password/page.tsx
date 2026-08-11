@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Label } from "@/components/ui/Label";
 import { resetPassword } from "@/app/actions/auth";
 
@@ -77,9 +77,8 @@ function ResetForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="password" required>New password</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="••••••••"
             autoComplete="new-password"
             value={password}
@@ -89,9 +88,8 @@ function ResetForm() {
 
         <div>
           <Label htmlFor="confirm" required>Confirm password</Label>
-          <Input
+          <PasswordInput
             id="confirm"
-            type="password"
             placeholder="••••••••"
             autoComplete="new-password"
             value={confirm}

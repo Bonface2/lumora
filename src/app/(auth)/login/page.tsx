@@ -10,6 +10,7 @@ import { z } from "zod";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Label } from "@/components/ui/Label";
 
 const schema = z.object({
@@ -106,9 +107,8 @@ function LoginForm() {
                 Forgot password?
               </a>
             </div>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               placeholder="••••••••"
               autoComplete="current-password"
               error={errors.password?.message}

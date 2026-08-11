@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Label } from "@/components/ui/Label";
 import { registerUser, setPendingRoleCookie } from "@/app/actions/auth";
 
@@ -184,9 +185,8 @@ function RegisterForm() {
 
           <div>
             <Label htmlFor="password" required>Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               placeholder="At least 8 characters"
               autoComplete="new-password"
               error={errors.password?.message}
@@ -196,9 +196,8 @@ function RegisterForm() {
 
           <div>
             <Label htmlFor="confirmPassword" required>Confirm password</Label>
-            <Input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               placeholder="••••••••"
               autoComplete="new-password"
               error={errors.confirmPassword?.message}
